@@ -108,7 +108,36 @@ def pmap(fun, axis_name=None, *, in_axes=0, out_axes=0, **pmap_kwargs):
     return _wrapped_pmap_fun
 
 
-vmap = jax.vmap
+def vmap(fun, in_axes=0, out_axes=0, axis_name=None):
+    def _wrapped_fun(state_dynamic, args, **kwargs):
+        with _DYNAMIC_STATE_BLOCKER:
+            with state.DynamicState(state_dynamic) as ds:
+                result = fun(*args, **kwargs)
+
+        return result, ds.state
+
+    def _wrapped_vmap_fun(*args, **kwargs):
+        _ = _with_lazy_initialization(*args, **kwargs)(
+            lambda *args, **kwargs: jax.vmap(
+                fun, axis_name=axis_name, in_axes=in_axes, out_axes=out_axes
+            )(*args, **kwargs),
+            identifier=str(hash(fun)),
+        )
+
+        cur_state = state.full()
+
+        result, new_state = jax.vmap(
+            _wrapped_fun,
+            in_axes=(None, in_axes),
+            out_axes=(out_axes, None),
+            axis_name=axis_name,
+        )(cur_state, args, **kwargs)
+
+        state.update(new_state)
+
+        return result
+
+    return _wrapped_vmap_fun
 
 
 def jit(fun, **jit_kwargs):
