@@ -47,7 +47,7 @@ def send(message: Message, interpret_final: bool = True) -> Any:
             if handler._is_handler_for(message):
                 return handler._handle(message)
         else:
-            raise NoHandlerError("Unhandled message: " + str(message))
+            raise NoHandlerError("Unhandled message: " + type(message).__name__)
     finally:
         _STACK_PTR.pop()
 
