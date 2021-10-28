@@ -36,13 +36,19 @@ def param(
             lr = lr * lr_multiplier
 
             optimizer = optimizer_constructor(lr)
-
-            param = default_value
-            opt_state = optimizer.init_fn(param)
             state.set("opt", optimizer, static=True)
-            state.set("opt_state", opt_state)
-            state.set("param_state", param)
-            state.set("param_step", 0)
+
+            try:
+                opt_state = state.get("opt_state")
+                _ = state.get("param_step")
+                param = optimizer.params_fn(opt_state)
+                state.set("param_state", param)
+            except state.StateException:
+                param = default_value
+                opt_state = optimizer.init_fn(param)
+                state.set("opt_state", opt_state)
+                state.set("param_state", param)
+                state.set("param_step", 0)
 
         return param
 
@@ -94,6 +100,7 @@ def _opt_state_io_packer_fn(message: Message):
             is_leaf=lambda x: isinstance(x, OptimizerState),
         )
         message.state["opt_state"] = unpacked_opt_state
+        del message.state["param_state"]
         return send(message=message, interpret_final=False)
 
     if isinstance(message, LoadStateMessage):

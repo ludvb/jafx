@@ -5,8 +5,10 @@ from glob import glob
 import haiku as hk
 import jax
 import jax.numpy as jnp
+import numpy as np
+from jax.tree_util import tree_map, tree_reduce
 
-from jafx import default, param, transforms
+from jafx import default, param, state, transforms
 from jafx.contrib.haiku import wrap_haiku
 from jafx.contrib.logging import (
     LogLevel,
@@ -16,6 +18,7 @@ from jafx.contrib.logging import (
     log_scalar,
 )
 from jafx.contrib.logging.text_logger import format_string, make_string_formatter
+from jafx.io import load_dynamic_state, save_dynamic_state
 from jafx.params import update_params
 
 
@@ -49,3 +52,38 @@ def test_functional(tmp_path):
 
     assert loss < 1.0
     assert len(glob(str(tmp_path / "tb_logs" / "*"))) == 1
+
+
+def test_save_load(tmp_path):
+    with default.handlers():
+        old_losses = []
+        for _ in range(10):
+            old_losses.append(_update_state(jnp.ones(jax.device_count())))
+        save_dynamic_state(tmp_path / "state.pkl")
+
+        old_opt_state = state.full()["opt_state"]
+
+    with default.handlers():
+        load_dynamic_state(tmp_path / "state.pkl")
+
+        new_opt_state = state.full()["opt_state"]
+        assert tree_reduce(
+            lambda a, x: a and x,
+            tree_map(
+                lambda a, b: (a == b).all(),
+                old_opt_state,
+                new_opt_state,
+            ),
+        ), "\n".join(
+            [
+                "Restored opt_state is different.",
+                f" Old: {str(old_opt_state)}",
+                f" New: {str(new_opt_state)}",
+            ]
+        )
+
+        new_losses = []
+        for _ in range(10):
+            new_losses.append(_update_state(jnp.ones(jax.device_count())))
+
+    assert np.mean(new_losses) < np.min(old_losses)
