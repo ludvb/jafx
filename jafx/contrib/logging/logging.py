@@ -1,4 +1,5 @@
 import os
+import warnings
 from abc import ABCMeta, abstractmethod
 from enum import Enum
 from typing import Any, Generic, TypeVar, get_args
@@ -51,14 +52,17 @@ class Logger(Handler, Generic[MessageType], metaclass=ABCMeta):
 
 
 def log(level: LogLevel, message: Any) -> None:
-    send(
-        LogMessage(
-            message=message,
-            date=DateTime.now(),
-            pid=os.getpid(),
-            level=level,
+    try:
+        send(
+            LogMessage(
+                message=message,
+                date=DateTime.now(),
+                pid=os.getpid(),
+                level=level,
+            )
         )
-    )
+    except NoHandlerError:
+        warnings.warn(f'No handler for log message of type "{type(message).__name__}"')
 
 
 def log_debug(message: Any) -> None:
