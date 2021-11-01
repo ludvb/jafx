@@ -100,7 +100,10 @@ def _opt_state_io_packer_fn(message: Message):
             is_leaf=lambda x: isinstance(x, OptimizerState),
         )
         message.state["opt_state"] = unpacked_opt_state
-        del message.state["param_state"]
+        try:
+            del message.state["param_state"]
+        except KeyError:
+            pass
         return send(message=message, interpret_final=False)
 
     if isinstance(message, LoadStateMessage):
