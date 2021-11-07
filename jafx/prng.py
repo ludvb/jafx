@@ -1,4 +1,5 @@
 import warnings
+from contextlib import contextmanager
 
 import jax
 
@@ -30,3 +31,13 @@ def set_prng_key(key):
 
 def seed(seed: int):
     set_prng_key(jax.random.PRNGKey(seed))
+
+
+@contextmanager
+def temp_prng_key(key):
+    old_prng_key = current_prng_key()
+    try:
+        set_prng_key(key)
+        yield
+    finally:
+        set_prng_key(old_prng_key)
