@@ -2,6 +2,8 @@ from typing import Any, Callable, NamedTuple, Optional, Union
 
 import attr
 import jax
+import jax.numpy as jnp
+import numpy as np
 from jax.experimental.host_callback import barrier_wait, id_tap
 
 from ....global_step import get_global_step
@@ -9,35 +11,79 @@ from ..logging import Logger, LogLevel, LogMessage, log
 from .jaxboard import SummaryWriter
 
 
-class LogArrayHistogramOptions(NamedTuple):
-    bins: int
-
-
 class LogArrayImageOptions(NamedTuple):
-    pass
-
-
-class LogArrayImagesOptions(NamedTuple):
     num_rows: Optional[int]
     num_cols: Optional[int]
+    padding: Optional[float]
+    normalize: bool
 
 
 class LogArrayScalarOptions(NamedTuple):
-    pass
+    bins: Optional[int]
 
 
 @attr.define
 class LogArray:
     tag: str
     data: Any
+    transformation: Callable[[Any], jnp.ndarray]
     options: Union[
         LogArrayImageOptions,
-        LogArrayImagesOptions,
         LogArrayScalarOptions,
-        LogArrayHistogramOptions,
     ]
-    transformation: Callable[[Any], Any]
     log_frequency: int
+
+
+def make_grid(
+    images: jnp.ndarray,
+    num_rows: Optional[int] = None,
+    num_cols: Optional[int] = None,
+    padding: Optional[float] = None,
+    normalize: bool = True,
+) -> jnp.ndarray:
+    if images.ndim == 3:
+        images = images[None]
+
+    if images.ndim > 4:
+        images = images.reshape(-1, *images.shape[-3:])
+
+    if normalize:
+        images -= images.min()
+        images /= images.max()
+
+    if padding is not None and images.shape[0] > 1:
+        padding_px = int(np.round(padding * max(images.shape[1:3])))
+        images = jnp.pad(
+            images,
+            (
+                (0, 0),
+                (padding_px, padding_px),
+                (padding_px, padding_px),
+                (0, 0),
+            ),
+        )
+
+    n = images.shape[0]
+
+    if num_cols is not None:
+        num_cols = num_cols
+        num_rows = int(np.ceil(n / num_cols))
+    elif num_rows is not None:
+        num_rows = num_cols
+        num_cols = int(np.ceil(n / num_rows))
+    else:
+        num_cols = int(np.ceil(np.sqrt(n)))
+        num_rows = int(np.ceil(n / num_cols))
+
+    n_padded = num_rows * num_cols
+    images = jnp.pad(images, ((0, n_padded - n), (0, 0), (0, 0), (0, 0)))
+
+    _, H, W, C = images.shape
+    images = images.reshape(num_rows, num_cols, H, W, C)
+    images = images.transpose(0, 2, 1, 3, 4)
+    images = images.reshape(num_rows * H, num_cols * W, C)
+
+    return images
 
 
 class TensorboardLogger(Logger[LogArray]):
@@ -56,37 +102,34 @@ class TensorboardLogger(Logger[LogArray]):
             if global_step % log_message.message.log_frequency != 0:
                 return
 
-            data = log_message.message.transformation(data)
             options = log_message.message.options
+            data = log_message.message.transformation(data)
 
-            if isinstance(options, LogArrayHistogramOptions):
-                self._summary_writer.histogram(
-                    log_message.message.tag,
-                    data,
-                    bins=options.bins,
-                    step=global_step,
-                )
+            if isinstance(options, LogArrayScalarOptions):
+                if data.ndim == 0:
+                    self._summary_writer.scalar(
+                        log_message.message.tag, data, step=global_step
+                    )
+                else:
+                    self._summary_writer.histogram(
+                        log_message.message.tag,
+                        data,
+                        bins=options.bins or 10,
+                        step=global_step,
+                    )
                 return
 
             if isinstance(options, LogArrayImageOptions):
                 self._summary_writer.image(
-                    log_message.message.tag, data, step=global_step
-                )
-                return
-
-            if isinstance(options, LogArrayImagesOptions):
-                self._summary_writer.images(
                     log_message.message.tag,
-                    data,
-                    rows=options.num_rows,
-                    cols=options.num_cols,
+                    make_grid(
+                        data,
+                        num_rows=options.num_rows,
+                        num_cols=options.num_cols,
+                        padding=options.padding,
+                        normalize=options.normalize,
+                    ),
                     step=global_step,
-                )
-                return
-
-            if isinstance(options, LogArrayScalarOptions):
-                self._summary_writer.scalar(
-                    log_message.message.tag, data, step=global_step
                 )
                 return
 
@@ -101,11 +144,11 @@ class TensorboardLogger(Logger[LogArray]):
         return super().__exit__(exc_type, exc_value, exc_tb)
 
 
-def log_histogram(
+def log_scalar(
     tag: str,
     data: Any,
     bins: int = 50,
-    transformation: Optional[Callable[[Any], Any]] = None,
+    transformation: Optional[Callable[[Any], jnp.ndarray]] = None,
     log_frequency: int = 1,
     level: LogLevel = LogLevel.INFO,
 ) -> None:
@@ -117,7 +160,7 @@ def log_histogram(
         LogArray(
             tag=tag,
             data=data,
-            options=LogArrayHistogramOptions(bins=bins),
+            options=LogArrayScalarOptions(bins=bins),
             transformation=transformation,
             log_frequency=log_frequency,
         ),
@@ -127,31 +170,11 @@ def log_histogram(
 def log_image(
     tag: str,
     data: Any,
-    transformation: Optional[Callable[[Any], Any]] = None,
-    log_frequency: int = 1,
-    level: LogLevel = LogLevel.INFO,
-) -> None:
-    if transformation is None:
-        transformation = lambda x: x
-
-    return log(
-        level,
-        LogArray(
-            tag=tag,
-            data=data,
-            options=LogArrayImageOptions(),
-            transformation=transformation,
-            log_frequency=log_frequency,
-        ),
-    )
-
-
-def log_images(
-    tag: str,
-    data: Any,
     num_rows: Optional[int] = None,
     num_cols: Optional[int] = None,
-    transformation: Optional[Callable[[Any], Any]] = None,
+    padding: Optional[float] = None,
+    normalize: bool = True,
+    transformation: Optional[Callable[[Any], jnp.ndarray]] = None,
     log_frequency: int = 1,
     level: LogLevel = LogLevel.INFO,
 ) -> None:
@@ -163,29 +186,12 @@ def log_images(
         LogArray(
             tag=tag,
             data=data,
-            options=LogArrayImagesOptions(num_rows=num_rows, num_cols=num_cols),
-            transformation=transformation,
-            log_frequency=log_frequency,
-        ),
-    )
-
-
-def log_scalar(
-    tag: str,
-    data: Any,
-    log_frequency: int = 1,
-    transformation: Optional[Callable[[Any], Any]] = None,
-    level: LogLevel = LogLevel.INFO,
-) -> None:
-    if transformation is None:
-        transformation = lambda x: x
-
-    return log(
-        level,
-        LogArray(
-            tag=tag,
-            data=data,
-            options=LogArrayScalarOptions(),
+            options=LogArrayImageOptions(
+                num_rows=num_rows,
+                num_cols=num_cols,
+                padding=padding,
+                normalize=normalize,
+            ),
             transformation=transformation,
             log_frequency=log_frequency,
         ),
