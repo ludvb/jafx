@@ -1,4 +1,5 @@
 # TODO: implement remaining transforms: xmap, loops, etc.
+# TODO: support static_{argnums,argnames}
 
 from typing import Optional
 
