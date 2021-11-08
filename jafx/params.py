@@ -17,9 +17,18 @@ from .io import LoadStateMessage, SaveStateMessage, StateIOMessage
 from .namespace import Namespace
 
 
+class NoParamException(Exception):
+    def __init__(self, param_name):
+        super().__init__()
+        self._param_name = param_name
+
+    def __repr__(self) -> str:
+        return f'No parameter named "{self._param_name}"'
+
+
 def param(
     name: str,
-    default_value: Any,
+    default_value: Any = None,
     optimizer_constructor: Optional[Callable[[float], Optimizer]] = None,
     lr: Optional[float] = None,
     lr_multiplier: float = 1.0,
@@ -28,6 +37,9 @@ def param(
         try:
             param = state.get("param_state")
         except state.StateException:
+            if default_value is None:
+                raise NoParamException(name)
+
             if optimizer_constructor is None:
                 optimizer_constructor = default_optimizer()
 
