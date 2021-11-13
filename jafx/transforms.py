@@ -37,7 +37,7 @@ def _with_lazy_initialization(*args, **kwargs):
     return _decorator
 
 
-def grad(fun, *grad_args, **grad_kwargs):
+def value_and_grad(fun, *grad_args, **grad_kwargs):
     try:
         has_aux = grad_kwargs.pop("has_aux")
     except KeyError:
@@ -56,22 +56,39 @@ def grad(fun, *grad_args, **grad_kwargs):
 
         return result, (extra, {**ds_nonparam.state, **ds_param.state})
 
-    def _wrapped_grad_fun(*args, **kwargs):
+    def _wrapped_value_and_grad_fun(*args, **kwargs):
         _ = _with_lazy_initialization(*args, **kwargs)(fun)
 
         cur_state = state.full().copy()
         state_param = cur_state.pop("param_state")
 
-        result, (extra, new_state) = jax.grad(
+        (result, (extra, new_state)), grad = jax.value_and_grad(
             _wrapped_fun, *grad_args, **grad_kwargs, has_aux=True
         )(state_param, cur_state, *args, **kwargs)
 
         state.update(new_state)
 
         if has_aux:
-            return result, extra
+            result = (result, extra)
 
-        return result
+        return result, grad
+
+    return _wrapped_value_and_grad_fun
+
+
+def grad(fun, *grad_args, **grad_kwargs):
+    has_aux = "has_aux" in grad_kwargs and grad_kwargs["has_aux"]
+    _value_and_grad = value_and_grad(fun, *grad_args, **grad_kwargs)
+
+    def _wrapped_grad_fun(*args, **kwargs):
+        result = _value_and_grad(*args, **kwargs)
+
+        if has_aux:
+            (_, extra), grad = result
+            return grad, extra
+
+        _, grad = result
+        return grad
 
     return _wrapped_grad_fun
 
