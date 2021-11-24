@@ -73,7 +73,7 @@ def jafx_loss():
 
 @jafx.jit
 def jafx_step():
-    grad = jafx.grad(jafx_loss)()
+    grad = jafx.param_grad(jafx_loss)()
     jafx.update_params(grad)
 
 with jafx.default.handlers(), jafx.HParams(default_lr=0.01):
@@ -114,7 +114,7 @@ def loss():
 
 @jafx.jit
 def step():
-    grad = jafx.grad(loss)()
+    grad = jafx.param_grad(loss)()
     jafx.update_params(grad)
 
 with jafx.default.handlers(), jafx.HParams(default_lr=0.01):
@@ -148,7 +148,7 @@ def loss():
 
 @jafx.jit
 def step():
-    grad = jafx.grad(loss)()
+    grad = jafx.param_grad(loss)()
     jafx.update_params(grad)
 
 with TensorboardLogger("./tb-logs"):

@@ -32,12 +32,12 @@ def _compute_loss(z):
     log_scalar("x_sum", x.sum(), log_frequency=5)
     log_image("x_image", x, log_frequency=5)
     x = (z * x ** 2).sum()
-    return x, x
+    return x
 
 
 @partial(transforms.pmap, axis_name="num_devices")
 def _update_state(z):
-    grad, loss = transforms.grad(_compute_loss, has_aux=True)(z)
+    loss, grad = transforms.value_and_param_grad(_compute_loss)(z)
     grad = jax.lax.pmean(grad, axis_name="num_devices")
     loss = jax.lax.pmean(loss, axis_name="num_devices")
     update_params(grad)
