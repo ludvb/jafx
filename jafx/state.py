@@ -1,6 +1,7 @@
 from typing import Any, Optional
 
 import attr
+import jax
 
 from .handler import Handler, Message, NoHandlerError, send
 from .namespace import current_namespace
@@ -117,7 +118,11 @@ class _State(Handler):
                 result = send(message, interpret_final=False)
             except NoHandlerError:
                 result = {}
-            return tree_merge(result, self._state)
+            state = jax.tree_util.tree_map(lambda x: x, self._state)
+            # ^ NOTE: This identity map is used to recursively copy the
+            #         self._state PyTree, thereby disallowing state
+            #         modifications by mutating the return value.
+            return tree_merge(result, state)
 
         raise NotImplementedError()
 
