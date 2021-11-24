@@ -1,6 +1,6 @@
 from typing import Any, Callable, NamedTuple, Optional
 
-from jax.experimental.optimizers import (
+from jax.example_libraries.optimizers import (
     Optimizer,
     OptimizerState,
     pack_optimizer_state,

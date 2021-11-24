@@ -32,7 +32,7 @@ import jax
 import jafx
 import jax.numpy as jnp
 import numpy as np
-from jax.experimental.optimizers import adam
+from jax.example_libraries.optimizers import adam
 
 X = np.linspace(0, 10, num=50)
 Y = -3.0 + 1.5 * X + np.random.normal(size=50)

@@ -1,7 +1,7 @@
 from typing import Any, Callable, Optional
 
 import attr
-from jax.experimental.optimizers import Optimizer, adam
+from jax.example_libraries.optimizers import Optimizer, adam
 
 from .handler import Handler, Message, send
 
