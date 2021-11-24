@@ -37,8 +37,6 @@ def param(
         try:
             param = state.get("param_state")
         except state.StateException:
-            if default_value is None:
-                raise NoParamException(name)
 
             if optimizer_constructor is None:
                 optimizer_constructor = default_optimizer()
@@ -55,7 +53,11 @@ def param(
                 _ = state.get("param_step")
                 param = optimizer.params_fn(opt_state)
                 state.set("param_state", param)
+
             except state.StateException:
+                if default_value is None:
+                    raise NoParamException(name)
+
                 param = default_value
                 opt_state = optimizer.init_fn(param)
                 state.set("opt_state", opt_state)
