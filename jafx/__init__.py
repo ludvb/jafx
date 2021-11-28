@@ -5,16 +5,17 @@ from .namespace import Namespace
 from .params import param, update_params
 from .state import DynamicState, StaticState
 from .transforms import (
-    jit,
-    pmap,
-    vmap,
-    grad,
-    value_and_grad,
-    param_grad,
-    value_and_param_grad,
-    param_vjp,
-    vjp,
+    batch_axes,
     checkpoint,
+    grad,
+    jit,
+    param_grad,
+    param_vjp,
+    pmap,
+    value_and_grad,
+    value_and_param_grad,
+    vjp,
+    vmap,
 )
 from . import (
     contrib,
