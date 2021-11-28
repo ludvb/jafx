@@ -28,9 +28,10 @@ def wrap_haiku(
             module_param = param(name)
 
         except (state.StateException, NoParamException):
-            module_param_default, module_state = module_init(
-                next_prng_key(), *args, **kwargs
-            )
+            with Namespace(scope=name):
+                module_param_default, module_state = module_init(
+                    next_prng_key(), *args, **kwargs
+                )
             module_param = param(name, module_param_default)
 
         with Namespace(scope=name):
