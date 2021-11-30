@@ -22,7 +22,7 @@ class Namespace(Handler):
     def _handle(self, message: Message) -> Any:
         if isinstance(message, GetNamespaceMessage):
             if self.namespace is not None:
-                return self.namespace
+                return self.namespace.copy()
             prefix = current_namespace(interpret_final=False)
             if self.scope is not None:
                 prefix.append(self.scope)
