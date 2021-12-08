@@ -48,8 +48,8 @@ def make_grid(
         images = images.reshape(-1, *images.shape[-3:])
 
     if normalize:
-        images -= images.min()
-        images /= images.max()
+        images = images - images.min()
+        images = images / images.max()
 
     if padding is not None and images.shape[0] > 1:
         padding_px = int(np.round(padding * max(images.shape[1:3])))
