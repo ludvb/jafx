@@ -480,6 +480,42 @@ def scan(fun, init, xs, *scan_args, identifier=None, **scan_kwargs):
     return fn_state, ys
 
 
+def cond(pred, true_fun, false_fun, *operands):
+    def _wrap_fun(fun):
+        def _wrapped_fun(v):
+            _cur_state, *operands = v
+            with _DYNAMIC_STATE_BLOCKER:
+                with state.DynamicState(_cur_state) as ds:
+                    result = fun(*operands)
+            return result, ds.state
+
+        return _wrapped_fun
+
+    true_fun_ = _wrap_fun(true_fun)
+    false_fun_ = _wrap_fun(false_fun)
+
+    true_fun_ = _with_lazy_initialization(
+        true_fun_,
+        initializer=true_fun,
+        identifier=str(hash(true_fun)),
+    )(*operands)
+    false_fun_ = _with_lazy_initialization(
+        false_fun_,
+        initializer=false_fun,
+        identifier=str(hash(true_fun)),
+    )(*operands)
+
+    result, new_state = jax.lax.cond(
+        pred,
+        true_fun_,
+        false_fun_,
+        (state.full(), *operands),
+    )
+    state.update(new_state)
+
+    return result
+
+
 checkpoint = _patch_default(jax.checkpoint)
 
 

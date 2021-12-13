@@ -7,6 +7,7 @@ from .global_step import get_global_step, update_global_step
 from .transforms import (
     batch_axes,
     checkpoint,
+    cond,
     grad,
     jit,
     param_grad,
