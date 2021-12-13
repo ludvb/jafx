@@ -138,9 +138,12 @@ class TensorboardLogger(Logger[LogArray]):
         id_tap(_do_log, (log_message.message.data, get_global_step()))
 
     def __exit__(self, exc_type, exc_value, exc_tb):
-        barrier_wait()
-        self._summary_writer.flush()
-        self._summary_writer.close()
+        try:
+            barrier_wait()
+            self._summary_writer.flush()
+            self._summary_writer.close()
+        except:
+            pass
         return super().__exit__(exc_type, exc_value, exc_tb)
 
 

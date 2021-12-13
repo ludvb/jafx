@@ -14,7 +14,6 @@ from .handler import Message, send
 from .hparams import default_lr, default_optimizer
 from .intercept import Intercept
 from .io import LoadStateMessage, SaveStateMessage, StateIOMessage
-from .namespace import Namespace
 
 
 class NoParamException(Exception):
@@ -33,7 +32,7 @@ def param(
     lr: Optional[float] = None,
     lr_multiplier: float = 1.0,
 ) -> Any:
-    with Namespace(scope=name):
+    with state.scope(name):
         try:
             param = state.get("param_state")
         except state.StateException:

@@ -48,7 +48,7 @@ def test_functional(tmp_path):
     loss = float("inf")
     with TextLogger([sys.stderr], log_level=LogLevel.DEBUG), make_string_formatter():
         with TensorboardLogger(tmp_path / "tb_logs"):
-            with default.handlers(), HParams(default_lr=0.1):
+            with default.handlers(), HParams(default_lr=0.01):
                 for _ in range(100):
                     loss = _update_state(jnp.ones(jax.device_count()))
                     log_info("loss = " + str(loss.mean()))
@@ -58,15 +58,15 @@ def test_functional(tmp_path):
 
 
 def test_save_load(tmp_path):
-    with default.handlers():
+    with default.handlers(), HParams(default_lr=0.01):
         old_losses = []
-        for _ in range(10):
+        for _ in range(5):
             old_losses.append(_update_state(jnp.ones(jax.device_count())))
         save_dynamic_state(tmp_path / "state.pkl")
 
         old_opt_state = state.full()["opt_state"]
 
-    with default.handlers():
+    with default.handlers(), HParams(default_lr=0.01):
         load_dynamic_state(tmp_path / "state.pkl")
 
         new_opt_state = state.full()["opt_state"]
@@ -86,7 +86,7 @@ def test_save_load(tmp_path):
         )
 
         new_losses = []
-        for _ in range(10):
+        for _ in range(5):
             new_losses.append(_update_state(jnp.ones(jax.device_count())))
 
     assert np.mean(new_losses) < np.min(old_losses)

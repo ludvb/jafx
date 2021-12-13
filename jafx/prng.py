@@ -4,7 +4,6 @@ from contextlib import contextmanager
 import jax
 
 from . import state
-from .namespace import Namespace
 
 
 def next_prng_key():
@@ -16,7 +15,7 @@ def next_prng_key():
 
 def current_prng_key():
     try:
-        with Namespace(["global"]):
+        with state.namespace(["global"]):
             return state.get("prng_key")
     except state.StateException:
         warnings.warn("No PRNG key has been set; seeding generator with 0")
@@ -25,7 +24,7 @@ def current_prng_key():
 
 
 def set_prng_key(key):
-    with Namespace(["global"]):
+    with state.namespace(["global"]):
         state.set("prng_key", key)
 
 

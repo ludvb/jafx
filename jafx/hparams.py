@@ -1,3 +1,5 @@
+# TODO: store hparams as static state
+
 from typing import Any, Callable, Optional
 
 import attr

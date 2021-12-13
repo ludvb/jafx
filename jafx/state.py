@@ -1,10 +1,10 @@
+from contextlib import contextmanager
 from typing import Any, Optional
 
 import attr
 import jax
 
 from .handler import Handler, Message, NoHandlerError, send
-from .namespace import current_namespace
 from .util import tree_merge, tree_update
 
 
@@ -16,6 +16,14 @@ class FullStateMessage(Message):
 @attr.define
 class GetStateMessage(Message):
     group: str
+    namespace: list[str]
+    static: bool
+
+
+@attr.define
+class RmStateMessage(Message):
+    group: str
+    namespace: list[str]
     static: bool
 
 
@@ -27,6 +35,7 @@ class ListGroupsMessage(Message):
 @attr.define
 class SetStateMessage(Message):
     group: str
+    namespace: list[str]
     value: Any
     static: bool
 
@@ -44,6 +53,7 @@ StateMessage = (
     ListGroupsMessage,
     SetStateMessage,
     UpdateStateMessage,
+    RmStateMessage,
 )
 
 
@@ -65,20 +75,32 @@ class _State(Handler):
     def __repr__(self):
         return "{}({})".format(type(self).__name__, repr(self._state))
 
-    def _set_in_current_scope(self, group: str, value: Any):
-        *prefix, k = current_namespace()
+    def _set_state(self, group: str, value: Any, namespace: list[str]):
+        *prefix, k = [group, *namespace]
         x = self._state
-        for path in [group, *prefix]:
+        for path in prefix:
             if path not in x:
                 x[path] = {}
             x = x[path]
         x[k] = value
 
-    def _get_in_current_scope(self, group: str):
+    def _get_state(self, group: str, namespace: list[str]):
         x = self._state[group]
-        for path in current_namespace():
+        for path in namespace:
             x = x[path]
         return x
+
+    def _rm_state(self, group: str, namespace: list[str]):
+        def _rm(d, subpaths):
+            cur_path, *next_paths = subpaths
+            if next_paths == []:
+                del d[cur_path]
+            else:
+                _rm(d[cur_path], next_paths)
+                if len(d[cur_path]) == 0:
+                    del d[cur_path]
+
+        _rm(self._state, [group, *namespace])
 
     def _handle(self, message: Message) -> Any:
         if isinstance(message, SetStateMessage):
@@ -86,7 +108,7 @@ class _State(Handler):
                 send(message, interpret_final=False)
             except (NoHandlerError, StateException):
                 pass
-            self._set_in_current_scope(message.group, message.value)
+            self._set_state(message.group, message.value, message.namespace)
             return
 
         if isinstance(message, UpdateStateMessage):
@@ -102,16 +124,24 @@ class _State(Handler):
 
         if isinstance(message, GetStateMessage):
             try:
-                return self._get_in_current_scope(message.group)
+                return self._get_state(message.group, message.namespace)
             except KeyError:
                 try:
                     return send(message, interpret_final=False)
                 except NoHandlerError:
                     raise StateException(
                         'No state for group "{}" in namespace /{}'.format(
-                            message.group, "/".join(current_namespace())
+                            message.group, "/".join(message.namespace)
                         )
                     )
+
+        if isinstance(message, RmStateMessage):
+            try:
+                return send(message, interpret_final=False)
+            except NoHandlerError:
+                pass
+            self._rm_state(message.group, message.namespace)
+            return
 
         if isinstance(message, FullStateMessage):
             try:
@@ -137,19 +167,119 @@ class StaticState(_State):
         return isinstance(message, StateMessage) and message.static
 
 
-def set(group: str, value: Any, static: bool = False) -> None:
-    return send(SetStateMessage(group=group, value=value, static=static))
+def set(
+    group: str,
+    value: Any,
+    static: bool = False,
+    namespace: Optional[list[str]] = None,
+) -> None:
+    if namespace is None:
+        namespace = get_namespace()
+    return send(
+        SetStateMessage(
+            group=group,
+            value=value,
+            namespace=namespace,
+            static=static,
+        )
+    )
 
 
-def get(group: str, static: bool = False) -> Any:
-    return send(GetStateMessage(static=static, group=group))
+def get(
+    group: str,
+    static: bool = False,
+    namespace: Optional[list[str]] = None,
+) -> Any:
+    if namespace is None:
+        namespace = get_namespace()
+    return send(
+        GetStateMessage(
+            static=static,
+            group=group,
+            namespace=namespace,
+        )
+    )
+
+
+def rm(
+    group: str,
+    static: bool = False,
+    namespace: Optional[list[str]] = None,
+) -> Any:
+    if namespace is None:
+        namespace = get_namespace()
+    return send(
+        RmStateMessage(
+            static=static,
+            group=group,
+            namespace=namespace,
+        )
+    )
+
+
+@contextmanager
+def temp(
+    group: str,
+    value: Any,
+    static: bool = False,
+    namespace: Optional[list[str]] = None,
+):
+    if namespace is None:
+        namespace = get_namespace()
+
+    class NotSet:
+        pass
+
+    try:
+        cur_value = get(group, static=static, namespace=namespace)
+    except StateException:
+        cur_value = NotSet()
+
+    try:
+        set(group, value, static=static, namespace=namespace)
+        yield
+    finally:
+        if isinstance(cur_value, NotSet):
+            rm(group, static=static, namespace=namespace)
+        else:
+            set(group, cur_value, static=static, namespace=namespace)
 
 
 def update(
     state: dict[str, Any], add_missing: bool = False, static: bool = False
 ) -> None:
-    return send(UpdateStateMessage(state=state, add_missing=add_missing, static=static))
+    return send(
+        UpdateStateMessage(
+            state=state,
+            add_missing=add_missing,
+            static=static,
+        )
+    )
 
 
 def full(static: bool = False) -> dict[str, Any]:
     return send(FullStateMessage(static=static))
+
+
+def namespace(namespace: list[str]):
+    return temp(
+        group="namespace",
+        value=namespace,
+        static=True,
+        namespace=[],
+    )
+
+
+def scope(scope: str):
+    try:
+        ns = get("namespace", static=True, namespace=[])
+    except StateException:
+        ns = []
+    return namespace(ns + [scope])
+
+
+def get_namespace() -> list[str]:
+    try:
+        return get("namespace", static=True, namespace=[])
+    except StateException:
+        return []

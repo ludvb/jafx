@@ -4,7 +4,7 @@ import attr
 from colors import color
 from jax.experimental.host_callback import id_tap
 
-from ...handler import send
+from ...handler import NoHandlerError, send
 from ...intercept import Intercept
 from .logging import Logger, LogLevel, LogMessage
 
@@ -62,7 +62,10 @@ def _reify_formatted_string(log_message: LogMessage[FormatString]) -> None:
             log_message,
             message=log_message.message.fmt.format(*fmt_args, **fmt_kwargs),
         )
-        send(log_message_)
+        try:
+            send(log_message_)
+        except NoHandlerError:
+            pass
 
     id_tap(
         _send_reified, (log_message.message.fmt_args, log_message.message.fmt_kwargs)

@@ -4,7 +4,7 @@ import haiku as hk
 import jax
 import jax.numpy as jnp
 
-from .. import Namespace, batch_axes, param, state
+from .. import batch_axes, param, state
 from ..params import NoParamException
 from ..prng import next_prng_key
 
@@ -23,18 +23,18 @@ def wrap_haiku(
 
     def _run_module(*args, **kwargs):
         try:
-            with Namespace(scope=name):
+            with state.scope(name):
                 module_state = state.get("haiku_state")
             module_param = param(name)
 
         except (state.StateException, NoParamException):
-            with Namespace(scope=name):
+            with state.scope(name):
                 module_param_default, module_state = module_init(
                     next_prng_key(), *args, **kwargs
                 )
             module_param = param(name, module_param_default)
 
-        with Namespace(scope=name):
+        with state.scope(name):
             result, new_state = module_apply(
                 module_param, module_state, next_prng_key(), *args, **kwargs
             )
