@@ -26,7 +26,7 @@ _DYNAMIC_STATE_BLOCKER = Intercept(
 )
 
 
-def _with_lazy_initialization(fun, initializer=None, identifier: Optional[str] = None):
+def _lazy_initialization(fun, initializer=None, identifier: Optional[str] = None):
     if initializer is None:
         initializer = fun
 
@@ -57,25 +57,24 @@ def _with_lazy_initialization(fun, initializer=None, identifier: Optional[str] =
 
         return identifier_
 
-    def _wrapped_fun(*args, **kwargs):
-        try:
-            return state.get("function", static=True, namespace=[_get_identifier()])
+    try:
+        return state.get("function", static=True, namespace=[_get_identifier()])
 
-        except state.StateException:
-            _ = initializer(*args, **kwargs)
+    except state.StateException:
+        pass
 
-            @wraps(fun)
-            def _fun(*args, **kwargs):
-                # NOTE: This closure is used to identify the current invocation
-                #       of fun with the current static state. Without it, JAX
-                #       would reuse the same trace for all static states.
-                return fun(*args, **kwargs)
+    _ = initializer()
 
-            state.set("function", _fun, static=True, namespace=[_get_identifier()])
+    @wraps(fun)
+    def _fun(*args, **kwargs):
+        # NOTE: This closure is used to identify the current invocation
+        #       of fun with the current static state. Without it, JAX
+        #       would reuse the same trace for all static states.
+        return fun(*args, **kwargs)
 
-            return _fun
+    state.set("function", _fun, static=True, namespace=[_get_identifier()])
 
-    return _wrapped_fun
+    return _fun
 
 
 def _patch_default(transform):
@@ -92,11 +91,11 @@ def _patch_default(transform):
             return result, ds.state
 
         def _wrapped_transform(*args, **kwargs):
-            fun = _with_lazy_initialization(
+            fun = _lazy_initialization(
                 transform(_wrapped_fun, *transform_args, **transform_kwargs),
-                initializer=fn,
+                initializer=lambda: fn(*args, **kwargs),
                 identifier=identifier,
-            )(*args, **kwargs)
+            )
 
             result, new_state = fun(*args, _cur_state=state.full(), **kwargs)
 
@@ -155,15 +154,15 @@ def value_and_grad(fun, *grad_args, identifier=None, **grad_kwargs):
         return result, (extra, ds.state)
 
     def _wrapped_value_and_grad_fun(*args, **kwargs):
-        cur_state = state.full()
-
-        fun_ = _with_lazy_initialization(
+        fun_ = _lazy_initialization(
             jax.value_and_grad(_wrapped_fun, *grad_args, **grad_kwargs, has_aux=True),
-            initializer=fun,
+            initializer=lambda: fun(*args, **kwargs),
             identifier=identifier,
-        )(*args, **kwargs)
+        )
 
-        (result, (extra, new_state)), grad = fun_(*args, _cur_state=cur_state, **kwargs)
+        (result, (extra, new_state)), grad = fun_(
+            *args, _cur_state=state.full(), **kwargs
+        )
 
         state.update(new_state)
 
@@ -215,11 +214,11 @@ def value_and_param_grad(fun, *grad_args, identifier=None, **grad_kwargs):
         return result, (extra, {**ds_nonparam.state, **ds_param.state})
 
     def _wrapped_value_and_grad_fun(*args, **kwargs):
-        fun_ = _with_lazy_initialization(
+        fun_ = _lazy_initialization(
             jax.value_and_grad(_wrapped_fun, *grad_args, **grad_kwargs, has_aux=True),
-            initializer=fun,
+            initializer=lambda: fun(*args, **kwargs),
             identifier=identifier,
-        )(*args, **kwargs)
+        )
 
         cur_state = state.full().copy()
         state_param = cur_state.pop("param_state")
@@ -335,7 +334,7 @@ def pmap(fun, axis_name=None, *, in_axes=0, out_axes=0, identifier=None, **pmap_
 
     def _wrapped_pmap_fun(*args, **kwargs):
         with _track_batch_axis(axis_name=axis_name):
-            fun_ = _with_lazy_initialization(
+            fun_ = _lazy_initialization(
                 jax.pmap(
                     _wrapped_fun,
                     axis_name,
@@ -343,18 +342,16 @@ def pmap(fun, axis_name=None, *, in_axes=0, out_axes=0, identifier=None, **pmap_
                     out_axes=(out_axes, None),
                     **pmap_kwargs,
                 ),
-                initializer=lambda *args, **kwargs: jax.vmap(
+                initializer=lambda: jax.vmap(
                     fun,
                     axis_name=axis_name,
                     in_axes=in_axes,
                     out_axes=out_axes,
                 )(*args, **kwargs),
                 identifier=identifier,
-            )(*args, **kwargs)
+            )
 
-            cur_state = state.full()
-
-            result, new_state = fun_(cur_state, args, **kwargs)
+            result, new_state = fun_(state.full(), args, **kwargs)
 
             state.update(new_state)
 
@@ -381,22 +378,20 @@ def soft_pmap(fun, axis_name=None, *, in_axes=0, identifier=None, **soft_pmap_kw
 
     def _wrapped_soft_pmap_fun(*args, **kwargs):
         with _track_batch_axis(axis_name=axis_name):
-            fun_ = _with_lazy_initialization(*args, **kwargs)(
+            fun_ = _lazy_initialization(*args, **kwargs)(
                 jax.soft_pmap(
                     _wrapped_fun,
                     axis_name,
                     in_axes=(None, in_axes),
                     **soft_pmap_kwargs,
                 ),
-                initializer=lambda *args, **kwargs: jax.vmap(
-                    fun, axis_name=axis_name, in_axes=in_axes
-                )(*args, **kwargs),
+                initializer=lambda: jax.vmap(fun, axis_name=axis_name, in_axes=in_axes)(
+                    *args, **kwargs
+                ),
                 identifier=identifier,
             )
 
-            cur_state = state.full()
-
-            result, new_state = fun_(cur_state, args, **kwargs)
+            result, new_state = fun_(state.full(), args, **kwargs)
 
             # XXX: jax.soft_pmap (and jax.experimental.maps.xmap, which soft_pmap is
             #      based on) does not allow `None` out_axes. As a workaround, we
@@ -428,22 +423,20 @@ def vmap(fun, axis_name=None, *, in_axes=0, out_axes=0, identifier=None):
 
     def _wrapped_vmap_fun(*args, **kwargs):
         with _track_batch_axis(axis_name=axis_name):
-            fun_ = _with_lazy_initialization(
+            fun_ = _lazy_initialization(
                 jax.vmap(
                     _wrapped_fun,
                     in_axes=(None, in_axes),
                     out_axes=(out_axes, None),
                     axis_name=axis_name,
                 ),
-                initializer=lambda *args, **kwargs: jax.vmap(
+                initializer=lambda: jax.vmap(
                     fun, axis_name=axis_name, in_axes=in_axes, out_axes=out_axes
                 )(*args, **kwargs),
                 identifier=identifier,
-            )(*args, **kwargs)
+            )
 
-            cur_state = state.full()
-
-            result, new_state = fun_(cur_state, args, **kwargs)
+            result, new_state = fun_(state.full(), args, **kwargs)
 
             state.update(new_state)
 
@@ -462,11 +455,11 @@ def scan(fun, init, xs, *scan_args, identifier=None, **scan_kwargs):
             fn_state, y = fun(state, x)
         return (ds.state, fn_state), y
 
-    fun = _with_lazy_initialization(
+    fun = _lazy_initialization(
         _wrapped_fun,
-        initializer=fun,
+        initializer=lambda: fun(init, xs[0]),
         identifier=identifier,
-    )(init, xs[0])
+    )
 
     (jafx_state, fn_state), ys = jax.lax.scan(
         _wrapped_fun,
@@ -494,16 +487,16 @@ def cond(pred, true_fun, false_fun, *operands):
     true_fun_ = _wrap_fun(true_fun)
     false_fun_ = _wrap_fun(false_fun)
 
-    true_fun_ = _with_lazy_initialization(
+    true_fun_ = _lazy_initialization(
         true_fun_,
-        initializer=true_fun,
+        initializer=lambda: true_fun(*operands),
         identifier=str(hash(true_fun)),
-    )(*operands)
-    false_fun_ = _with_lazy_initialization(
+    )
+    false_fun_ = _lazy_initialization(
         false_fun_,
-        initializer=false_fun,
+        initializer=lambda: false_fun(*operands),
         identifier=str(hash(true_fun)),
-    )(*operands)
+    )
 
     result, new_state = jax.lax.cond(
         pred,
