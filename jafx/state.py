@@ -136,11 +136,11 @@ class _State(Handler):
                     )
 
         if isinstance(message, RmStateMessage):
+            self._rm_state(message.group, message.namespace)
             try:
                 return send(message, interpret_final=False)
             except NoHandlerError:
                 pass
-            self._rm_state(message.group, message.namespace)
             return
 
         if isinstance(message, FullStateMessage):
