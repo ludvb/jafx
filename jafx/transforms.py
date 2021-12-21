@@ -489,10 +489,10 @@ def scan(fun, init, xs, *scan_args, identifier=None, **scan_kwargs):
     if identifier is None:
         identifier = str(hash(fun))
 
-    def _wrapped_fun(state, x):
-        jafx_state, fn_state = state
+    def _wrapped_fun(cur_state, x):
+        jafx_state, fn_state = cur_state
         with _DYNAMIC_STATE_BLOCKER, state.DynamicState(jafx_state) as ds:
-            fn_state, y = fun(state, x)
+            fn_state, y = fun(fn_state, x)
         return (ds.state, fn_state), y
 
     def _run_scan():
@@ -505,7 +505,7 @@ def scan(fun, init, xs, *scan_args, identifier=None, **scan_kwargs):
         )
 
     def _initializer():
-        _ = _wrapped_fun(state, xs[0])
+        _ = _wrapped_fun((state.full(), init), xs[0])
         return _run_scan()
 
     (jafx_state, fn_state), ys = _lazy_initialization(
