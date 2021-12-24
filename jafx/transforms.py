@@ -44,14 +44,9 @@ def _lazy_initialization(fun, initializer=None, identifier: Optional[str] = None
         else:
             identifier_ = identifier
 
-        ss = state.full(static=True)
-        try:
-            _ = ss.pop("function")
-        except KeyError:
-            pass
         state_hash = jax.tree_util.tree_reduce(
             op.xor,
-            jax.tree_util.tree_map(_safe_hash, ss),
+            jax.tree_util.tree_map(_safe_hash, state.full(static=True)),
             0,
         )
         identifier_ = identifier_ + "-" + str(abs(state_hash))
@@ -59,20 +54,29 @@ def _lazy_initialization(fun, initializer=None, identifier: Optional[str] = None
         return identifier_
 
     try:
-        return state.get("function", static=True, namespace=[_get_identifier()])
+        noinit = state.get("noinit", static=True, namespace=["value"])
+        if noinit:
+            return fun
     except state.StateException:
         pass
 
-    @wraps(fun)
-    def _fun(*args, **kwargs):
-        # NOTE: This closure is used to identify the current invocation
-        #       of fun with the current static state. Without it, JAX
-        #       would reuse the same trace for all static states.
-        return fun(*args, **kwargs)
+    try:
+        isinit = state.get("isinit", static=True, namespace=[_get_identifier()])
+        if isinit:
+
+            @wraps(fun)
+            def _fun(*args, **kwargs):
+                with state.temp("noinit", True, static=True, namespace=["value"]):
+                    return fun(*args, **kwargs)
+
+            return _fun
+
+    except state.StateException:
+        pass
 
     def _initializer(*args, **kwargs):
         initializer_result = initializer(*args, **kwargs)
-        state.set("function", _fun, static=True, namespace=[_get_identifier()])
+        state.set("isinit", True, static=True, namespace=[_get_identifier()])
         return initializer_result
 
     return _initializer
@@ -160,16 +164,33 @@ def value_and_grad(
 
         return result, (extra, ds.state)
 
+    def _run_initializer(*args, _cur_state, **kwargs):
+        result = fun(*args, **kwargs)
+
+        if has_aux:
+            result, extra = result
+        else:
+            extra = None
+
+        s = state.full()
+        return (
+            (result, (extra, s)),
+            jnp.zeros_like(args[argnums])
+            if isinstance(argnums, int)
+            else [jnp.zeros_like(args[i]) for i in argnums],
+        )
+
     def _wrapped_value_and_grad_fun(*args, **kwargs):
         fun_ = _lazy_initialization(
             jax.value_and_grad(
                 _wrapped_fun,
                 argnums=argnums,
-                has_aux=False,
+                has_aux=True,
                 holomorphic=holomorphic,
                 allow_int=allow_int,
                 reduce_axes=reduce_axes,
             ),
+            initializer=_run_initializer,
             identifier=identifier,
         )
 
@@ -374,12 +395,15 @@ def pmap(fun, axis_name=None, *, in_axes=0, out_axes=0, identifier=None, **pmap_
                     out_axes=(out_axes, None),
                     **pmap_kwargs,
                 ),
-                initializer=lambda _, args, **kwargs: jax.vmap(
-                    fun,
-                    axis_name=axis_name,
-                    in_axes=in_axes,
-                    out_axes=out_axes,
-                )(*args, **kwargs),
+                initializer=lambda _, args, **kwargs: (
+                    jax.vmap(
+                        fun,
+                        axis_name=axis_name,
+                        in_axes=in_axes,
+                        out_axes=out_axes,
+                    )(*args, **kwargs),
+                    state.full(),
+                ),
                 identifier=identifier,
             )
 
@@ -417,11 +441,14 @@ def soft_pmap(fun, axis_name=None, *, in_axes=0, identifier=None, **soft_pmap_kw
                     in_axes=(None, in_axes),
                     **soft_pmap_kwargs,
                 ),
-                initializer=lambda _, args, **kwargs: jax.vmap(
-                    fun,
-                    axis_name=axis_name,
-                    in_axes=in_axes,
-                )(*args, **kwargs),
+                initializer=lambda _, args, **kwargs: (
+                    jax.vmap(
+                        fun,
+                        axis_name=axis_name,
+                        in_axes=in_axes,
+                    )(*args, **kwargs),
+                    state.full(),
+                ),
                 identifier=identifier,
             )
 
