@@ -5,14 +5,14 @@ description = "Composable deep learning with effectful JAX primitives"
 authors = []
 
 [tool.poetry.dependencies]
-python = ">=3.9,<3.10"
-cattrs = "^1.8.0"
+python = "^3.9"
+cattrs = "^1.9.0"
 pendulum = "^2.1.2"
 ansicolors = "^1.1.8"
-dm-haiku = {git = "https://github.com/deepmind/dm-haiku.git", rev = "main"}
-tensorboard = "^2.7.0"
-tensorflow = "^2.6.1"
-matplotlib = "^3.4.3"
+dm-haiku = "^0.0.5"
+matplotlib = "^3.5.1"
+tb-nightly = "*"
+tf-nightly = "*"
 
 [tool.poetry.dev-dependencies]
 ipdb = "^0.13.9"
