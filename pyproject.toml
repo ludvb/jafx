@@ -9,7 +9,7 @@ python = "^3.9"
 cattrs = "^1.9.0"
 pendulum = "^2.1.2"
 ansicolors = "^1.1.8"
-dm-haiku = "^0.0.5"
+dm-haiku = {git = "https://github.com/deepmind/dm-haiku", rev = "main"}
 matplotlib = "^3.5.1"
 tb-nightly = "*"
 tf-nightly = "*"
