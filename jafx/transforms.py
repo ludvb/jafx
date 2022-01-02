@@ -10,6 +10,7 @@ from typing import Hashable, Optional
 
 import jax
 import jax.numpy as jnp
+import numpy as np
 
 from . import state
 from .handler import NoHandlerError
@@ -123,10 +124,14 @@ def _patch_default(transform):
 
 
 @contextmanager
-def _track_batch_axis(axis_name: Hashable):
+def _track_batch_axis(axis_name: Hashable, axis_size: int):
     current_batch_axes = batch_axes()
     with state.namespace(["batch_axes"]):
-        state.set(group="global", value=current_batch_axes + [axis_name], static=True)
+        state.set(
+            group="global",
+            value=current_batch_axes | {axis_name: axis_size},
+            static=True,
+        )
     try:
         yield
     finally:
@@ -145,12 +150,12 @@ class _BatchAxis:
         return self.identifier
 
 
-def batch_axes():
+def batch_axes() -> dict[str, int]:
     try:
         with state.namespace(["batch_axes"]):
             return state.get("global", static=True)
     except state.StateException:
-        return []
+        return {}
 
 
 def value_and_grad(
@@ -398,7 +403,7 @@ def _make_pmap_initializer(fun, axis_name, in_axes, out_axes, identifier):
                 "mapped_state_axes",
                 mapped_state_axes,
                 static=True,
-                namespace=[identifier + f"-{_hash_state(batch_axes())}"],
+                namespace=[identifier + f"-{_hash_state(list(batch_axes()))}"],
             )
             # TODO: ^ reduce mapped_state_axes to minimal prefix tree
 
@@ -451,7 +456,7 @@ def _get_pmap_axes(identifier):
         mapped_state_axes = state.get(
             "mapped_state_axes",
             static=True,
-            namespace=[identifier + f"-{_hash_state(batch_axes())}"],
+            namespace=[identifier + f"-{_hash_state(list(batch_axes()))}"],
         )
     except state.StateException:
         mapped_state_axes = None
@@ -461,6 +466,42 @@ def _get_pmap_axes(identifier):
     state_in_axes = _tree_trim(state_out_axes, cur_state)
 
     return state_in_axes, state_out_axes
+
+
+def _get_axis_size(pytree, in_axes):
+    class NoValue(Exception):
+        pass
+
+    def _get_size(pytree, in_axes):
+        if isinstance(pytree, (np.ndarray, jnp.ndarray)):
+            return pytree.shape[in_axes]
+
+        if isinstance(pytree, (tuple, list)):
+            if isinstance(in_axes, int):
+                in_axes = [in_axes] * len(pytree)
+            for a, b in zip(pytree, in_axes):
+                try:
+                    return _get_size(a, b)
+                except NoValue:
+                    pass
+            raise NoValue()
+
+        if isinstance(pytree, dict):
+            if isinstance(in_axes, int):
+                in_axes = {k: in_axes for k in pytree}
+            for k in pytree:
+                try:
+                    return _get_size(pytree[k], in_axes[k])
+                except NoValue:
+                    pass
+                raise NoValue()
+
+        raise NotImplementedError()
+
+    try:
+        return _get_size(pytree, in_axes)
+    except NoValue:
+        raise RuntimeError("Failed to establish axis size")
 
 
 def pmap(fun, axis_name=None, *, in_axes=0, out_axes=0, identifier=None, **pmap_kwargs):
@@ -478,7 +519,9 @@ def pmap(fun, axis_name=None, *, in_axes=0, out_axes=0, identifier=None, **pmap_
         return result, ds.state
 
     def _wrapped_pmap_fun(*args, **kwargs):
-        with _track_batch_axis(axis_name=axis_name):
+        with _track_batch_axis(
+            axis_name=axis_name, axis_size=_get_axis_size(args, in_axes)
+        ):
             state_in_axes, state_out_axes = _get_pmap_axes(identifier)
             fun_ = _lazy_initialization(
                 jax.pmap(
@@ -522,7 +565,9 @@ def vmap(fun, axis_name=None, *, in_axes=0, out_axes=0, identifier=None):
         return result, ds.state
 
     def _wrapped_vmap_fun(*args, **kwargs):
-        with _track_batch_axis(axis_name=axis_name):
+        with _track_batch_axis(
+            axis_name=axis_name, axis_size=_get_axis_size(args, in_axes)
+        ):
             state_in_axes, state_out_axes = _get_pmap_axes(identifier)
             fun_ = _lazy_initialization(
                 jax.vmap(

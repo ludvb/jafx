@@ -4,9 +4,8 @@ import haiku as hk
 import jax
 import jax.numpy as jnp
 
-from .. import batch_axes, param, state
+from .. import batch_axes, param, prng, state
 from ..params import NoParamException
-from ..prng import next_prng_key
 
 
 def wrap_haiku(
@@ -30,13 +29,13 @@ def wrap_haiku(
         except (state.StateException, NoParamException):
             with state.scope(name):
                 module_param_default, module_state = module_init(
-                    next_prng_key(), *args, **kwargs
+                    prng.nextkey(), *args, **kwargs
                 )
             module_param = param(name, module_param_default)
 
         with state.scope(name):
             result, new_state = module_apply(
-                module_param, module_state, next_prng_key(), *args, **kwargs
+                module_param, module_state, prng.pnextkey(), *args, **kwargs
             )
             new_state = jax.lax.stop_gradient(new_state)
             for batch_axis in batch_axes():
