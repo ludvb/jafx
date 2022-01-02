@@ -5,7 +5,7 @@
 
 import operator as op
 from contextlib import contextmanager
-from functools import partial, wraps
+from functools import partial, total_ordering, wraps
 from typing import Hashable, Optional
 
 import jax
@@ -139,9 +139,20 @@ def _track_batch_axis(axis_name: Hashable, axis_size: int):
             state.set(group="global", value=current_batch_axes, static=True)
 
 
+@total_ordering
 class _BatchAxis:
     def __init__(self, identifier):
         self.identifier = identifier
+
+    def __eq__(self, other):
+        if isinstance(other, type(self)):
+            return self.identifier == other.identifier
+        return False
+
+    def __lt__(self, other):
+        if isinstance(other, type(self)):
+            return self.identifier < other.identifier
+        return False
 
     def __hash__(self):
         return hash(self.identifier)
