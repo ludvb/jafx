@@ -6,6 +6,7 @@ import jax.numpy as jnp
 import numpy as np
 from jax.experimental.host_callback import barrier_wait, id_tap
 
+from .... import get_namespace
 from ....global_step import get_global_step
 from ..logging import Logger, LogLevel, LogMessage, log
 from .jaxboard import SummaryWriter
@@ -96,6 +97,8 @@ class TensorboardLogger(Logger[LogArray]):
         self._summary_writer = SummaryWriter(save_path, enable=jax.process_index() == 0)
 
     def _handle_log_message(self, log_message: LogMessage[LogArray]):
+        ns = get_namespace()
+
         def _do_log(data, _):
             data, global_step = data
 
@@ -104,24 +107,20 @@ class TensorboardLogger(Logger[LogArray]):
 
             options = log_message.message.options
             data = log_message.message.transformation(data)
+            tag = "/".join([*ns, log_message.message.tag])
 
             if isinstance(options, LogArrayScalarOptions):
                 if data.ndim == 0:
-                    self._summary_writer.scalar(
-                        log_message.message.tag, data, step=global_step
-                    )
+                    self._summary_writer.scalar(tag, data, step=global_step)
                 else:
                     self._summary_writer.histogram(
-                        log_message.message.tag,
-                        data,
-                        bins=options.bins or 10,
-                        step=global_step,
+                        tag, data, bins=options.bins or 10, step=global_step
                     )
                 return
 
             if isinstance(options, LogArrayImageOptions):
                 self._summary_writer.image(
-                    log_message.message.tag,
+                    tag,
                     make_grid(
                         data,
                         num_rows=options.num_rows,
