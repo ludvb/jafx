@@ -76,7 +76,7 @@ def jafx_step():
     grad = jafx.param_grad(jafx_loss)()
     jafx.update_params(grad)
 
-with jafx.default.handlers(), jafx.HParams(default_lr=0.01):
+with jafx.default.handlers(), jafx.hparams(learning_rate=0.01):
     for _ in range(1000):
         jafx_step()
     print("Result: " + str(jafx.state.full()["param_state"]))
@@ -117,7 +117,7 @@ def step():
     grad = jafx.param_grad(loss)()
     jafx.update_params(grad)
 
-with jafx.default.handlers(), jafx.HParams(default_lr=0.01):
+with jafx.default.handlers(), jafx.hparams(learning_rate=0.01):
     for _ in range(1000):
         step()
     print("Data:       " + str(Y))
@@ -152,7 +152,7 @@ def step():
     jafx.update_params(grad)
 
 with TensorboardLogger("./tb-logs"):
-    with jafx.default.handlers(), jafx.HParams(default_lr=0.01):
+    with jafx.default.handlers(), jafx.hparams(learning_rate=0.01):
         for _ in range(1000):
             step()
 ```

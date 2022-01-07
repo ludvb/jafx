@@ -1,58 +1,39 @@
-# TODO: store hparams as static state
+import warnings
+from typing import Optional, TypeVar
 
-from typing import Any, Callable, Optional
+from . import state
+from .util import StackedContext
 
-import attr
-from jax.example_libraries.optimizers import Optimizer, adam
-
-from .handler import Handler, Message, send
-
-
-@attr.define
-class GetHParam(Message):
-    name: str
+HparamType = TypeVar("HparamType")
 
 
-class HParams(Handler):
-    def __init__(
-        self,
-        default_optimizer: Optional[Callable[[float], Optimizer]] = None,
-        default_lr: Optional[float] = None,
-        **kwargs: Any,
-    ):
-        self.default_optimizer = default_optimizer
-        self.default_lr = default_lr
-        for k, v in kwargs.items():
-            setattr(self, k, v)
-
-    def _handle(self, message: Message) -> Any:
-        if isinstance(message, GetHParam):
-            try:
-                hparam = getattr(self, message.name)
-            except AttributeError:
-                hparam = None
-            if hparam is not None:
-                return hparam
-            return send(message=message, interpret_final=False)
-        raise RuntimeError()
-
-    def _is_handler_for(self, message: Message) -> bool:
-        return isinstance(message, GetHParam)
+def get_hparam(
+    name: str,
+    default: Optional[HparamType] = None,
+    set_default: bool = True,
+    warn_if_unset: bool = False,
+) -> HparamType:
+    try:
+        return state.get("hparams", static=True, namespace=[name])
+    except state.StateException:
+        if default is not None:
+            if warn_if_unset:
+                warnings.warn(f'Hparam "{name}" is unset, using default.')
+            if set_default:
+                set_hparam(name, default)
+            return default
+        raise RuntimeError(f'Hparam "{name}" is unset with no default')
 
 
-def get_hparam(name: str) -> Any:
-    return send(GetHParam(name))
+def set_hparam(name: str, value: HparamType) -> HparamType:
+    state.set("hparams", value, static=True, namespace=[name])
+    return value
 
 
-def default_optimizer() -> Callable[[float], Optimizer]:
-    return get_hparam("default_optimizer")
-
-
-def default_lr() -> float:
-    return get_hparam("default_lr")
-
-
-default_hparams = HParams(
-    default_optimizer=lambda lr: adam(lr),
-    default_lr=1e-3,
-)
+def hparams(**hparams):
+    return StackedContext(
+        *(
+            state.temp("hparams", value, static=True, namespace=[name])
+            for name, value in hparams.items()
+        )
+    )

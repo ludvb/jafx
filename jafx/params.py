@@ -3,6 +3,7 @@ from typing import Any, Callable, NamedTuple, Optional
 from jax.example_libraries.optimizers import (
     Optimizer,
     OptimizerState,
+    adam,
     pack_optimizer_state,
     unpack_optimizer_state,
 )
@@ -11,7 +12,7 @@ from jax.tree_util import tree_map, tree_multimap
 from . import state
 from .global_step import update_global_step
 from .handler import Message, send
-from .hparams import default_lr, default_optimizer
+from .hparams import get_hparam
 from .intercept import Intercept
 from .io import LoadStateMessage, SaveStateMessage, StateIOMessage
 
@@ -38,10 +39,12 @@ def param(
         except state.StateException:
 
             if optimizer_constructor is None:
-                optimizer_constructor = default_optimizer()
+                optimizer_constructor = get_hparam(
+                    "optimizer", adam, warn_if_unset=True
+                )
 
             if lr is None:
-                lr = default_lr()
+                lr = get_hparam("learning_rate", 1e-3, warn_if_unset=True)
             lr = lr * lr_multiplier
 
             optimizer = optimizer_constructor(lr)

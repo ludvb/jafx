@@ -19,7 +19,7 @@ from jafx.contrib.logging import (
     log_scalar,
 )
 from jafx.contrib.logging.text_logger import format_string, make_string_formatter
-from jafx.hparams import HParams
+from jafx.hparams import hparams
 from jafx.io import load_dynamic_state, save_dynamic_state
 from jafx.params import update_params
 
@@ -48,7 +48,7 @@ def test_functional(tmp_path):
     loss = float("inf")
     with TextLogger([sys.stderr], log_level=LogLevel.DEBUG), make_string_formatter():
         with TensorboardLogger(tmp_path / "tb_logs"):
-            with default.handlers(), HParams(default_lr=0.01):
+            with default.handlers(), hparams(learning_rate=0.01):
                 for _ in range(100):
                     loss = _update_state(jnp.ones(jax.device_count()))
                     log_info("loss = " + str(loss.mean()))
@@ -58,7 +58,7 @@ def test_functional(tmp_path):
 
 
 def test_save_load(tmp_path):
-    with default.handlers(), HParams(default_lr=0.01):
+    with default.handlers(), hparams(learning_rate=0.01):
         old_losses = []
         for _ in range(5):
             old_losses.append(_update_state(jnp.ones(jax.device_count())))
@@ -66,7 +66,7 @@ def test_save_load(tmp_path):
 
         old_opt_state = state.full()["opt_state"]
 
-    with default.handlers(), HParams(default_lr=0.01):
+    with default.handlers(), hparams(learning_rate=0.01):
         load_dynamic_state(tmp_path / "state.pkl")
 
         new_opt_state = state.full()["opt_state"]

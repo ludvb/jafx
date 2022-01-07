@@ -1,5 +1,5 @@
 from .__version__ import __version__
-from .hparams import HParams, default_hparams, get_hparam
+from .hparams import hparams, get_hparam, set_hparam
 from .io import load_dynamic_state, save_dynamic_state
 from .params import param, update_params
 from .state import DynamicState, StaticState, namespace, scope, get_namespace
