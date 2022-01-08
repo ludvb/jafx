@@ -13,16 +13,9 @@ import jax.numpy as jnp
 import numpy as np
 
 from . import state
-from .handler import NoHandlerError
 from .intercept import Intercept
 
-
-def __raise_no_handler_error(_):
-    raise NoHandlerError()
-
-
 _DYNAMIC_STATE_BLOCKER = Intercept(
-    fn=__raise_no_handler_error,
     predicate=lambda x: isinstance(x, state.StateMessage) and not x.static,
 )
 

@@ -1,6 +1,10 @@
 from typing import Any, Callable, Optional
 
-from .handler import Handler, Message
+from .handler import Handler, Message, NoHandlerError
+
+
+def _raise_no_handler_error(_):
+    raise NoHandlerError()
 
 
 class Intercept(Handler):
@@ -10,7 +14,7 @@ class Intercept(Handler):
         predicate: Optional[Callable[[Message], bool]] = None,
     ):
         if fn is None:
-            fn = lambda _: None
+            fn = _raise_no_handler_error
         if predicate is None:
             predicate = lambda _: True
 
