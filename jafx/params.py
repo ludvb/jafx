@@ -1,5 +1,6 @@
 from typing import Any, Callable, NamedTuple, Optional
 
+import jax.numpy as jnp
 from jax.example_libraries.optimizers import (
     Optimizer,
     OptimizerState,
@@ -28,7 +29,7 @@ class NoParamException(Exception):
 
 def param(
     name: str,
-    default_value: Any = None,
+    default_value: jnp.ndarray = None,
     optimizer_constructor: Optional[Callable[[float], Optimizer]] = None,
     lr: Optional[float] = None,
     lr_multiplier: float = 1.0,
