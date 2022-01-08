@@ -329,7 +329,7 @@ def param_grad(fun, *grad_args, **grad_kwargs):
     return _wrapped_param_grad_fun
 
 
-def vjp(fn, *vjp_args, **vjp_kwargs):
+def vjp(fn, *primals, **vjp_kwargs):
     try:
         has_aux = vjp_kwargs.pop("has_aux")
     except KeyError:
@@ -348,7 +348,10 @@ def vjp(fn, *vjp_args, **vjp_kwargs):
         return result, (extra, ds.state)
 
     result, f_vjp, (extra, new_state) = jax.vjp(
-        partial(_wrapped_fun, state.full()), *vjp_args, **vjp_kwargs, has_aux=True
+        partial(_wrapped_fun, state.full()),
+        *primals,
+        **vjp_kwargs,
+        has_aux=True,
     )
 
     state.update(new_state, add_missing=True)
@@ -359,17 +362,17 @@ def vjp(fn, *vjp_args, **vjp_kwargs):
     return result, f_vjp
 
 
-def param_vjp(fn, **vjp_kwargs):
+def param_vjp(fn, *primals, **vjp_kwargs):
     try:
         has_aux = vjp_kwargs.pop("has_aux")
     except KeyError:
         has_aux = False
 
-    def _wrapped_fun(cur_state, cur_param_state):
+    def _wrapped_fun(cur_state, cur_param_state, *args):
         with _DYNAMIC_STATE_BLOCKER:
             with state.DynamicState(cur_state) as ds:
                 with state.DynamicState({"param_state": cur_param_state}) as ds_param:
-                    result = fn()
+                    result = fn(*args)
 
         if has_aux:
             result, extra = result
@@ -382,7 +385,11 @@ def param_vjp(fn, **vjp_kwargs):
     state_param = cur_state.pop("param_state")
 
     result, f_vjp, (extra, new_state) = jax.vjp(
-        partial(_wrapped_fun, cur_state), state_param, **vjp_kwargs, has_aux=True
+        partial(_wrapped_fun, cur_state),
+        state_param,
+        *primals,
+        **vjp_kwargs,
+        has_aux=True,
     )
 
     state.update(new_state, add_missing=True)
