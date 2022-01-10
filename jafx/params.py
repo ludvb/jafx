@@ -1,5 +1,6 @@
 from typing import Any, Callable, NamedTuple, Optional
 
+import jax
 import jax.numpy as jnp
 from jax.example_libraries.optimizers import (
     Optimizer,
@@ -29,7 +30,7 @@ class NoParamException(Exception):
 
 def param(
     name: str,
-    default_value: jnp.ndarray = None,
+    default_value: Any = None,
     optimizer_constructor: Optional[Callable[[float], Optimizer]] = None,
     lr: Optional[float] = None,
     lr_multiplier: float = 1.0,
@@ -54,7 +55,9 @@ def param(
             try:
                 opt_state = state.get("opt_state")
                 _ = state.get("param_step")
-                param = optimizer.params_fn(opt_state)
+                param = jax.tree_util.tree_map(
+                    jnp.array, optimizer.params_fn(opt_state)
+                )
                 state.set("param_state", param)
 
             except state.StateException:
