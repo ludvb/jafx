@@ -35,7 +35,12 @@ def _hash_state(state):
     )
 
 
-def _lazy_initialization(fun, initializer=None, identifier: Optional[str] = None):
+def _lazy_initialization(
+    fun,
+    initializer=None,
+    identifier: Optional[str] = None,
+    use_init_return_value: bool = True,
+):
     if initializer is None:
         initializer = fun
 
@@ -60,16 +65,15 @@ def _lazy_initialization(fun, initializer=None, identifier: Optional[str] = None
     except state.StateException:
         pass
 
+    @wraps(fun)
+    def _wrapped_fun(*args, **kwargs):
+        with state.temp("noinit", True, static=True, namespace=["value"]):
+            return fun(*args, **kwargs)
+
     try:
         isinit = state.get("isinit", static=True, namespace=[_get_identifier()])
         if isinit:
-
-            @wraps(fun)
-            def _fun(*args, **kwargs):
-                with state.temp("noinit", True, static=True, namespace=["value"]):
-                    return fun(*args, **kwargs)
-
-            return _fun
+            return _wrapped_fun
 
     except state.StateException:
         pass
@@ -77,7 +81,9 @@ def _lazy_initialization(fun, initializer=None, identifier: Optional[str] = None
     def _initializer(*args, **kwargs):
         initializer_result = initializer(*args, **kwargs)
         state.set("isinit", True, static=True, namespace=[_get_identifier()])
-        return initializer_result
+        if use_init_return_value:
+            return initializer_result
+        return _wrapped_fun(*args, **kwargs)
 
     return _initializer
 
@@ -622,14 +628,14 @@ def scan(fun, init, xs, *scan_args, identifier=None, **scan_kwargs):
         )
 
     def _initializer():
-        (new_state, fn_state), y = _wrapped_fun((state.full(), init), xs[0])
-        y = jax.tree_util.tree_map(lambda x: jnp.repeat(x[None], xs.shape[0], 0), y)
-        return (new_state, fn_state), y
+        (new_state, _), _ = _wrapped_fun((state.full(), init), xs[0])
+        state.update(new_state, add_missing=True)
 
     (jafx_state, fn_state), ys = _lazy_initialization(
         _run_scan,
         initializer=_initializer,
         identifier=identifier,
+        use_init_return_value=False,
     )()
 
     state.update(jafx_state, add_missing=True)
@@ -654,30 +660,23 @@ def cond(pred, true_fun, false_fun, *operands, identifier=None):
     true_fun_ = _wrap_fun(true_fun)
     false_fun_ = _wrap_fun(false_fun)
 
-    def _initializer():
-        _ = true_fun(*operands)
-        return false_fun(*operands)
-
-    true_fun_ = _lazy_initialization(
-        lambda: true_fun_,
-        initializer=lambda: true_fun(*operands),
-        identifier=str(hash(true_fun)),
-    )()
-    false_fun_ = _lazy_initialization(
-        lambda: false_fun_,
-        initializer=lambda: false_fun(*operands),
-        identifier=str(hash(true_fun)),
-    )()
-
-    result, new_state = _lazy_initialization(
-        lambda: jax.lax.cond(
+    def _run_cond():
+        return jax.lax.cond(
             pred,
             true_fun_,
             false_fun_,
             (state.full(), *operands),
-        ),
+        )
+
+    def _initializer():
+        _ = true_fun_((state.full(), *operands))
+        _ = false_fun_((state.full(), *operands))
+
+    result, new_state = _lazy_initialization(
+        _run_cond,
         initializer=_initializer,
         identifier=identifier,
+        use_init_return_value=False,
     )()
     state.update(new_state, add_missing=True)
 
