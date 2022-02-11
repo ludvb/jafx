@@ -20,16 +20,8 @@ See jaxboard_demo.py for example usage.
 import io
 import struct
 import time
-import warnings
 import wave
 
-import matplotlib as mpl
-
-# Necessary to prevent attempted Tk import:
-with warnings.catch_warnings():
-    warnings.simplefilter("ignore")
-    mpl.use("Agg")
-# pylint: disable=g-import-not-at-top
 import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
