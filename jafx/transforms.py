@@ -669,8 +669,10 @@ def cond(pred, true_fun, false_fun, *operands, identifier=None):
         )
 
     def _initializer():
-        _ = true_fun_((state.full(), *operands))
-        _ = false_fun_((state.full(), *operands))
+        _, new_state1 = true_fun_((state.full(), *operands))
+        _, new_state2 = false_fun_((state.full(), *operands))
+        state.update(new_state1, add_missing=True)
+        state.update(new_state2, add_missing=True)
 
     result, new_state = _lazy_initialization(
         _run_cond,
