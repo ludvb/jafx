@@ -3,11 +3,13 @@
 #       https://github.com/google/jax/issues/7155 is fixed, we can probably
 #       simplify substantially
 
+import itertools as it
 import operator as op
 from contextlib import contextmanager
 from functools import partial, total_ordering, wraps
-from typing import Hashable, Optional
+from typing import Any, Hashable, Optional
 
+import attr
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -485,40 +487,72 @@ def _get_pmap_axes(identifier):
     return state_in_axes, state_out_axes
 
 
-def _get_axis_size(pytree, in_axes):
-    class NoValue(Exception):
-        pass
+@attr.define
+class _LeafNode:
+    # NOTE: this is used as an indicator to avoid leaf checking using a more
+    #       brittle is_leaf function
+    value: Any
 
-    def _get_size(pytree, in_axes):
-        if isinstance(pytree, (np.ndarray, jnp.ndarray)):
-            return pytree.shape[in_axes]
 
-        if isinstance(pytree, (tuple, list)):
-            if isinstance(in_axes, int):
-                in_axes = [in_axes] * len(pytree)
-            for a, b in zip(pytree, in_axes):
-                try:
-                    return _get_size(a, b)
-                except NoValue:
-                    pass
-            raise NoValue()
+def _parse_axes(axes):
+    def _is_leaf(node):
+        if isinstance(node, int):
+            return True
+        if isinstance(node, dict):
+            return all(
+                isinstance(k, int) and isinstance(v, Hashable) for k, v in node.items()
+            )
+        if isinstance(node, list):
+            try:
+                return node[-1] is ...
+            except IndexError:
+                return False
+        return False
 
-        if isinstance(pytree, dict):
-            if isinstance(in_axes, int):
-                in_axes = {k: in_axes for k in pytree}
-            for k in pytree:
-                try:
-                    return _get_size(pytree[k], in_axes[k])
-                except NoValue:
-                    pass
-                raise NoValue()
+    def _parse_axes(in_axis):
+        if isinstance(in_axis, int):
+            return _LeafNode([(None, in_axis)])
+        if isinstance(in_axis, dict):
+            return _LeafNode([(k, i) for i, k in in_axis.items()])
+        if isinstance(in_axis, list):
+            return _LeafNode([(k, i) for i, k in enumerate(in_axis[:-1])])
+        raise RuntimeError()
 
-        raise NotImplementedError()
+    return jax.tree_util.tree_map(_parse_axes, axes, is_leaf=_is_leaf)
 
-    try:
-        return _get_size(pytree, in_axes)
-    except NoValue:
-        raise RuntimeError("Failed to establish axis size")
+
+def _get_axis_size(pytree, axes):
+    def _size_of_subtree(axes: _LeafNode, tree):
+        def _size_of_axis_in_subtree(i):
+            nodes = jax.tree_util.tree_leaves(tree)
+            return jax.tree_util.tree_map(lambda node: node.shape[i], nodes)
+
+        return [
+            _LeafNode((name, s))
+            for name, pos in axes.value
+            for s in _size_of_axis_in_subtree(pos)
+        ]
+
+    axes = _parse_axes(axes)
+    subtree_sizes = jax.tree_util.tree_multimap(_size_of_subtree, axes, pytree)
+    subtree_sizes = [x.value for x in jax.tree_util.tree_leaves(subtree_sizes)]
+
+    def _collapse_sizes(k, sizes):
+        size, *rest = sizes
+        if not all(x == size for x in rest):
+            sizes_str = " ,".join(map(str, sizes))
+            if k is None:
+                raise ValueError(f"Mismatched sizes ({sizes_str})")
+            else:
+                raise ValueError(f'Mismatched sizes of axis "{k}" ({sizes_str})')
+        return size
+
+    subtree_sizes_dict = {
+        k: _collapse_sizes(k, [x for _, x in groups])
+        for k, groups in it.groupby(sorted(subtree_sizes), key=lambda x: x[0])
+    }
+
+    return subtree_sizes_dict
 
 
 def pmap(fun, axis_name=None, *, in_axes=0, out_axes=0, identifier=None, **pmap_kwargs):
@@ -537,7 +571,7 @@ def pmap(fun, axis_name=None, *, in_axes=0, out_axes=0, identifier=None, **pmap_
 
     def _wrapped_pmap_fun(*args, **kwargs):
         with _track_batch_axis(
-            axis_name=axis_name, axis_size=_get_axis_size(args, in_axes)
+            axis_name=axis_name, axis_size=_get_axis_size(args, in_axes)[None]
         ):
             state_in_axes, state_out_axes = _get_pmap_axes(identifier)
             fun_ = _lazy_initialization(
@@ -583,7 +617,7 @@ def vmap(fun, axis_name=None, *, in_axes=0, out_axes=0, identifier=None):
 
     def _wrapped_vmap_fun(*args, **kwargs):
         with _track_batch_axis(
-            axis_name=axis_name, axis_size=_get_axis_size(args, in_axes)
+            axis_name=axis_name, axis_size=_get_axis_size(args, in_axes)[None]
         ):
             state_in_axes, state_out_axes = _get_pmap_axes(identifier)
             fun_ = _lazy_initialization(
