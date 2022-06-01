@@ -9,7 +9,6 @@ from jax.example_libraries.optimizers import (
     pack_optimizer_state,
     unpack_optimizer_state,
 )
-from jax.tree_util import tree_map, tree_multimap
 
 from . import state
 from .global_step import update_global_step
@@ -78,7 +77,7 @@ def update_params(grads: Any) -> None:
     opt = state.full(static=True)["opt"]
     param_step = state.full()["param_step"]
 
-    opt_state_new = tree_multimap(
+    opt_state_new = jax.tree_util.tree_map(
         lambda opt, opt_state, param_step, g: opt.update_fn(param_step, g, opt_state),
         opt,
         opt_state,
@@ -86,13 +85,13 @@ def update_params(grads: Any) -> None:
         grads,
         is_leaf=lambda x: isinstance(x, Optimizer),
     )
-    param_state_new = tree_multimap(
+    param_state_new = jax.tree_util.tree_map(
         lambda opt, opt_state: opt.params_fn(opt_state),
         opt,
         opt_state_new,
         is_leaf=lambda x: isinstance(x, Optimizer),
     )
-    param_step_new = tree_map(lambda x: x + 1, param_step)
+    param_step_new = jax.tree_util.tree_map(lambda x: x + 1, param_step)
 
     state.update(
         {
@@ -114,7 +113,7 @@ def _opt_state_io_packer_fn(message: Message):
             packed_opt_state = message.state["opt_state"]
         except KeyError:
             return send(message=message, interpret_final=False)
-        unpacked_opt_state = tree_map(
+        unpacked_opt_state = jax.tree_util.tree_map(
             lambda x: UnpackedOptimizerState(data=unpack_optimizer_state(x)),
             packed_opt_state,
             is_leaf=lambda x: isinstance(x, OptimizerState),
@@ -132,7 +131,7 @@ def _opt_state_io_packer_fn(message: Message):
             unpacked_opt_state = state.full()["opt_state"]
         except KeyError:
             return
-        packed_opt_state = tree_map(
+        packed_opt_state = jax.tree_util.tree_map(
             lambda x: pack_optimizer_state(x.data),
             unpacked_opt_state,
             is_leaf=lambda x: isinstance(x, UnpackedOptimizerState),
