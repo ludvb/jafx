@@ -18,11 +18,14 @@
 See jaxboard_demo.py for example usage.
 """
 import io
+import os
 import struct
 import time
 import wave
+import tempfile
 
 import matplotlib.pyplot as plt
+import moviepy.editor as mpy
 import numpy as np
 import tensorflow as tf
 
@@ -124,6 +127,59 @@ class SummaryWriter:
             value=[tf.compat.v1.Summary.Value(tag=tag, simple_value=value)]
         )
         self.add_summary(summary, step)
+
+    def video(self, tag, video, step=None, fps=None, duration=None):
+        """Saves video summary from np.ndarray [T,H,W], [T,H,W,1], or [T,H,W,3].
+
+        Args:
+            tag: str: label for this data
+            video: ndarray: [T,H,W], [T,H,W,1], [T,H,W,3] video to save
+            step: int: training step
+            fps: int: frames per second
+            duration: float: duration of video in seconds if fps is None
+        """
+        if step is None:
+            step = self._step
+        else:
+            self._step = step
+
+        if duration is None:
+            duration = 4.0
+        if fps is None:
+            fps = np.shape(video)[0] / duration
+            
+        video = np.array(video)
+
+        if len(video.shape) == 3:
+            video = np.expand_dims(video, -1)
+        if np.shape(video)[-1] == 1:
+            video = np.repeat(video, 3, axis=-1)
+            
+        if video.dtype != np.uint8:
+            video = 255.0 * (video - video.min()) / (video.max() - video.min())
+            video = video.astype(np.uint8)
+
+        clip = mpy.ImageSequenceClip(list(video), fps=fps)
+        filename = tempfile.NamedTemporaryFile(suffix=".gif", delete=False).name
+        clip.write_gif(filename, verbose=False, logger=None)
+        with open(filename, "rb") as f:
+            gif_data = f.read()
+        try:
+            os.remove(filename)
+        except OSError:
+            pass
+
+        clip_summary = tf.compat.v1.Summary.Image(
+            encoded_image_string=gif_data,
+            colorspace=3,
+            height=video.shape[1],
+            width=video.shape[2],
+        )
+        summary = tf.compat.v1.Summary(
+            value=[tf.compat.v1.Summary.Value(tag=tag, image=clip_summary)]
+        )
+        self.add_summary(summary, step)
+
 
     def image(self, tag, image, step=None):
         """Saves RGB image summary from np.ndarray [H,W], [H,W,1], or [H,W,3].

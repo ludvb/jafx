@@ -1,3 +1,4 @@
+from functools import partial
 from typing import Any, Callable, NamedTuple, Optional, Union
 
 import attr
@@ -23,6 +24,15 @@ class LogArrayScalarOptions(NamedTuple):
     bins: Optional[int]
 
 
+class LogArrayVideoOptions(NamedTuple):
+    num_rows: Optional[int]
+    num_cols: Optional[int]
+    padding: Optional[float]
+    normalize: bool
+    fps: Optional[float]
+    duration: Optional[float]
+
+
 @attr.define
 class LogArray:
     tag: str
@@ -31,6 +41,7 @@ class LogArray:
     options: Union[
         LogArrayImageOptions,
         LogArrayScalarOptions,
+        LogArrayVideoOptions,
     ]
     log_frequency: int
 
@@ -132,6 +143,26 @@ class TensorboardLogger(Logger[LogArray]):
                 )
                 return
 
+            if isinstance(options, LogArrayVideoOptions):
+                self._summary_writer.video(
+                    tag,
+                    jax.vmap(
+                        partial(
+                            make_grid,
+                            num_rows=options.num_rows,
+                            num_cols=options.num_cols,
+                            padding=options.padding,
+                            normalize=options.normalize,
+                        ),
+                        in_axes=-4,
+                        out_axes=-4,
+                    )(data),
+                    step=global_step,
+                    fps=options.fps,
+                    duration=options.duration,
+                )
+                return
+
             raise NotImplementedError()
 
         id_tap(_do_log, (log_message.message.data, get_global_step()))
@@ -193,6 +224,41 @@ def log_image(
                 num_cols=num_cols,
                 padding=padding,
                 normalize=normalize,
+            ),
+            transformation=transformation,
+            log_frequency=log_frequency,
+        ),
+    )
+
+
+def log_video(
+    tag: str,
+    data: Any,
+    num_rows: Optional[int] = None,
+    num_cols: Optional[int] = None,
+    padding: Optional[float] = None,
+    normalize: bool = True,
+    fps: Optional[float] = None,
+    duration: Optional[float] = None,
+    transformation: Optional[Callable[[Any], jnp.ndarray]] = None,
+    log_frequency: int = 1,
+    level: LogLevel = LogLevel.INFO,
+) -> None:
+    if transformation is None:
+        transformation = lambda x: x
+
+    return log(
+        level,
+        LogArray(
+            tag=tag,
+            data=data,
+            options=LogArrayVideoOptions(
+                num_rows=num_rows,
+                num_cols=num_cols,
+                padding=padding,
+                normalize=normalize,
+                fps=fps,
+                duration=duration,
             ),
             transformation=transformation,
             log_frequency=log_frequency,
