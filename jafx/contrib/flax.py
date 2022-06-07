@@ -12,7 +12,7 @@ def wrap_flax(
     name: str,
     module: nn.Module,
     state_batch_reduction: Optional[Callable] = None,
-) -> Callable[..., jnp.ndarray]:
+) -> Callable[..., Any]:
     """Convenience wrapper for computations using flax modules"""
 
     if state_batch_reduction is None:

@@ -12,7 +12,7 @@ def wrap_haiku(
     name: str,
     fn: Callable[..., Any],
     state_batch_reduction: Optional[Callable] = None,
-) -> Callable[..., jnp.ndarray]:
+) -> Callable[..., Any]:
     """Convenience wrapper for computations using haiku modules"""
 
     if state_batch_reduction is None:
