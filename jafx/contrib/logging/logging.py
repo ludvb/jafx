@@ -7,7 +7,7 @@ from typing import Any, Generic, TypeVar, get_args
 import attr
 from pendulum.datetime import DateTime
 
-from ...handler import Handler, Message, NoHandlerError, send
+from ...handler import Handler, Message, NoHandlerError, ReturnValue, send
 
 
 class LogLevel(Enum):
@@ -37,18 +37,15 @@ class Logger(Handler, Generic[MessageType], metaclass=ABCMeta):
     def _handle_log_message(self, log_message: LogMessage[MessageType]) -> None:
         raise NotImplementedError()
 
-    def _is_handler_for(self, message: Message) -> bool:
-        return isinstance(message, LogMessage) and isinstance(
-            message.message, get_args(self.__orig_bases__[0])[0]  # type: ignore
-        )
-
-    def _handle(self, message: LogMessage[MessageType]):
-        if message.level.value >= self.log_level.value:
-            self._handle_log_message(message)
-        try:
-            send(message, interpret_final=False)
-        except NoHandlerError:
-            pass
+    def _handle(self, message: Message):
+        if isinstance(message, LogMessage):
+            if isinstance(message.message, get_args(self.__orig_bases__[0])[0]):  # type: ignore
+                if message.level.value >= self.log_level.value:
+                    self._handle_log_message(message)
+            try:
+                return send(message, interpret_final=False)
+            except NoHandlerError:
+                return ReturnValue(None)
 
 
 def log(level: LogLevel, message: Any) -> None:

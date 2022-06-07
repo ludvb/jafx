@@ -24,7 +24,5 @@ class Intercept(Handler):
         self.predicate = predicate
 
     def _handle(self, message: Message) -> Any:
-        return self.fn(message)
-
-    def _is_handler_for(self, message: Message) -> bool:
-        return self.predicate(message)
+        if self.predicate(message):
+            return self.fn(message)

@@ -4,7 +4,7 @@ from typing import Any, Optional
 import attr
 import jax
 
-from .handler import Handler, Message, NoHandlerError, send
+from .handler import Handler, Message, NoHandlerError, ReturnValue, send
 from .util import tree_merge, tree_update
 
 
@@ -109,7 +109,7 @@ class _State(Handler):
             except (NoHandlerError, StateException):
                 pass
             self._set_state(message.group, message.value, message.namespace)
-            return
+            return ReturnValue(None)
 
         if isinstance(message, UpdateStateMessage):
             try:
@@ -120,11 +120,11 @@ class _State(Handler):
                 self._state = tree_merge(self._state, message.state)
             else:
                 self._state = tree_update(self._state, message.state)
-            return
+            return ReturnValue(None)
 
         if isinstance(message, GetStateMessage):
             try:
-                return self._get_state(message.group, message.namespace)
+                return ReturnValue(self._get_state(message.group, message.namespace))
             except KeyError:
                 try:
                     return send(message, interpret_final=False)
@@ -141,7 +141,7 @@ class _State(Handler):
                 return send(message, interpret_final=False)
             except NoHandlerError:
                 pass
-            return
+            return ReturnValue(None)
 
         if isinstance(message, FullStateMessage):
             try:
@@ -152,19 +152,21 @@ class _State(Handler):
             # ^ NOTE: This identity map is used to recursively copy the
             #         self._state PyTree, thereby disallowing state
             #         modifications by mutating the return value.
-            return tree_merge(result, state)
+            return ReturnValue(tree_merge(result, state))
 
         raise NotImplementedError()
 
 
 class DynamicState(_State):
-    def _is_handler_for(self, message: Message) -> bool:
-        return isinstance(message, StateMessage) and not message.static
+    def _handle(self, message: Message) -> Any:
+        if isinstance(message, StateMessage) and not message.static:
+            return super()._handle(message)
 
 
 class StaticState(_State):
-    def _is_handler_for(self, message: Message) -> bool:
-        return isinstance(message, StateMessage) and message.static
+    def _handle(self, message: Message) -> Any:
+        if isinstance(message, StateMessage) and message.static:
+            return super()._handle(message)
 
 
 def set(

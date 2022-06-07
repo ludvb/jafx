@@ -1,9 +1,16 @@
+import attr
 from abc import ABCMeta, abstractmethod
 from typing import Any
 
 
+@attr.define
 class Message:
     pass
+
+
+@attr.define
+class ReturnValue:
+    value: Any
 
 
 class NoHandlerError(RuntimeError):
@@ -13,10 +20,6 @@ class NoHandlerError(RuntimeError):
 class Handler(metaclass=ABCMeta):
     @abstractmethod
     def _handle(self, message: Message) -> Any:
-        pass
-
-    @abstractmethod
-    def _is_handler_for(self, message: Message) -> bool:
         pass
 
     def __enter__(self):
@@ -44,8 +47,9 @@ def send(message: Message, interpret_final: bool = True) -> Any:
             stack_ptr = _STACK_PTR[-1]
             _STACK_PTR[-1] -= 1
             handler = _STACK[stack_ptr]
-            if handler._is_handler_for(message):
-                return handler._handle(message)
+            match handler._handle(message):
+                case ReturnValue(value):
+                    return value
         else:
             raise NoHandlerError("Unhandled message: " + type(message).__name__)
     finally:

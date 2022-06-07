@@ -4,7 +4,7 @@ from typing import Any
 import attr
 
 from . import state
-from .handler import Handler, Message, NoHandlerError, send
+from .handler import Handler, Message, NoHandlerError, ReturnValue, send
 
 
 @attr.define
@@ -30,7 +30,7 @@ class StateIO(Handler):
                 send(message=message, interpret_final=False)
             except NoHandlerError:
                 pass
-            return
+            return ReturnValue(None)
 
         if isinstance(message, LoadStateMessage):
             try:
@@ -40,12 +40,7 @@ class StateIO(Handler):
             with open(message.filename, "rb") as f:
                 s = pickle.load(f)
             state.update(s, add_missing=True)
-            return
-
-        raise RuntimeError()
-
-    def _is_handler_for(self, message: Message) -> bool:
-        return isinstance(message, StateIOMessage)
+            return ReturnValue(None)
 
 
 def save_dynamic_state(filename: str) -> None:

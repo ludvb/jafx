@@ -1,5 +1,5 @@
 from .__version__ import __version__
-from .handler import Message, Handler, NoHandlerError, send
+from .handler import Message, Handler, NoHandlerError, ReturnValue, send
 from .hparams import hparams, get_hparam, set_hparam
 from .io import load_dynamic_state, save_dynamic_state
 from .params import param, update_params

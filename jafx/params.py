@@ -12,7 +12,7 @@ from jax.example_libraries.optimizers import (
 
 from . import state
 from .global_step import update_global_step
-from .handler import Message, send
+from .handler import Message, ReturnValue, send
 from .hparams import get_hparam
 from .intercept import Intercept
 from .io import LoadStateMessage, SaveStateMessage, StateIOMessage
@@ -137,7 +137,7 @@ def _opt_state_io_packer_fn(message: Message):
             is_leaf=lambda x: isinstance(x, UnpackedOptimizerState),
         )
         state.update({"opt_state": packed_opt_state})
-        return
+        return ReturnValue(None)
 
 
 opt_state_io_packer = Intercept(
