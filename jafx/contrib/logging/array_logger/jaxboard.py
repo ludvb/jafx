@@ -20,9 +20,9 @@ See jaxboard_demo.py for example usage.
 import io
 import os
 import struct
+import tempfile
 import time
 import wave
-import tempfile
 
 import matplotlib.pyplot as plt
 import moviepy.editor as mpy
@@ -147,14 +147,14 @@ class SummaryWriter:
             duration = 4.0
         if fps is None:
             fps = np.shape(video)[0] / duration
-            
+
         video = np.array(video)
 
         if len(video.shape) == 3:
             video = np.expand_dims(video, -1)
         if np.shape(video)[-1] == 1:
             video = np.repeat(video, 3, axis=-1)
-            
+
         if video.dtype != np.uint8:
             video = 255.0 * (video - video.min()) / (video.max() - video.min())
             video = video.astype(np.uint8)
@@ -179,7 +179,6 @@ class SummaryWriter:
             value=[tf.compat.v1.Summary.Value(tag=tag, image=clip_summary)]
         )
         self.add_summary(summary, step)
-
 
     def image(self, tag, image, step=None):
         """Saves RGB image summary from np.ndarray [H,W], [H,W,1], or [H,W,3].
