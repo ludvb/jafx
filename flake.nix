@@ -1,7 +1,7 @@
 {
   inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
-    flake-utils.url = github:numtide/flake-utils;
+    nixpkgs.url = "github:nixos/nixpkgs/nixpkgs-unstable";
+    flake-utils.url = "github:numtide/flake-utils";
   };
 
   outputs = { self, nixpkgs, flake-utils }:
@@ -13,30 +13,41 @@
         };
         overlay = (final: prev: { });
         overlays = [ overlay ];
-      in
-      rec {
+      in rec {
         inherit overlay overlays;
-        devShell = pkgs.mkShell
-          rec {
-            name = "venv";
-            venvDir = "./.venv";
-            buildInputs = with pkgs; [
-              python310Packages.python
-              python310Packages.ipython
-              python310Packages.venvShellHook
+        devShell = pkgs.mkShell rec {
+          name = "venv";
+          venvDir = "./.venv";
+          buildInputs = let
+            systemPackages = with pkgs; [
+              pre-commit
 
-              python310Packages.poetry
-
-              python310Packages.jax
-              (python310Packages.jaxlib-bin.override { cudaSupport = true; })
+              gfortran
+              # ^ required by scipy
             ];
+            pythonPackages = with pkgs.python310Packages; [
+              python
+              ipython
+              venvShellHook
 
-            postVenvCreation = ''
-              poetry install
-            '';
+              poetry
 
-            postShellHook = ''
-            '';
-          };
+              jax
+              (jaxlib-bin.override { cudaSupport = true; })
+            ];
+          in pythonPackages ++ systemPackages;
+
+          postVenvCreation = postShellHook + ''
+            poetry install -E haiku -E flax -E logging
+            pre-commit install
+          '';
+
+          postShellHook =''
+            export OPENBLAS=${pkgs.openblas}/lib
+            # ^ required by scipy
+            export LD_LIBRARY_PATH+=:${pkgs.zlib}/lib
+            # ^ required by scipy
+          '' ;
+        };
       });
 }

@@ -7,7 +7,6 @@ authors = []
 [tool.poetry.dependencies]
 python = "^3.9"
 cattrs = "^1.9.0"
-pendulum = "^2.1.2"
 ansicolors = "^1.1.8"
 matplotlib = "^3.5.1"
 dm-haiku = {version = "^0.0.6", optional = true}
@@ -18,8 +17,13 @@ tensorboard = {version = "^2.9.0", optional = true}
 [tool.poetry.dev-dependencies]
 ipdb = "^0.13.9"
 pytest = "^6.2.5"
-black = "21.7b0"
+black = "^22.3.0"
 isort = "^5.9.3"
+
+[tool.poetry.extras]
+haiku = ["dm-haiku"]
+flax = ["flax"]
+logging = ["moviepy", "tensorboard"]
 
 [tool.isort]
 profile = "black"
