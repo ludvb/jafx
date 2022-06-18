@@ -20,6 +20,7 @@ from .transforms import (
     value_and_param_grad,
     vjp,
     vmap,
+    while_loop,
 )
 from . import (
     contrib,

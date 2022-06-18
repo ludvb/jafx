@@ -677,6 +677,43 @@ def scan(fun, init, xs, *scan_args, identifier=None, **scan_kwargs):
     return fn_state, ys
 
 
+def while_loop(cond_fun, body_fun, init_val, identifier=None):
+    if identifier is None:
+        identifier = str(hash(body_fun))
+
+    def _wrapped_body_fun(cur_state):
+        jafx_state, a = cur_state
+        with _DYNAMIC_STATE_BLOCKER, state.DynamicState(jafx_state) as ds:
+            a = body_fun(a)
+        return ds.state, a
+
+    def _wrapped_cond_fun(cur_state):
+        _, a = cur_state
+        return cond_fun(a)
+
+    def _run_while_loop():
+        return jax.lax.while_loop(
+            _wrapped_cond_fun,
+            _wrapped_body_fun,
+            (state.full(), init_val),
+        )
+
+    def _initializer():
+        new_state, _ = _wrapped_body_fun((state.full(), init_val))
+        state.update(new_state, add_missing=True)
+
+    jafx_state, a = _lazy_initialization(
+        _run_while_loop,
+        initializer=_initializer,
+        identifier=identifier,
+        use_init_return_value=False,
+    )()
+
+    state.update(jafx_state, add_missing=True)
+
+    return a
+
+
 def cond(pred, true_fun, false_fun, *operands, identifier=None):
     if identifier == False:
         identifier = str(hash(true_fun) ^ hash(false_fun))
