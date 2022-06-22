@@ -195,20 +195,7 @@ def value_and_grad(
         return result, (extra, ds.state)
 
     def _run_initializer(*args, _cur_state, **kwargs):
-        result = fun(*args, **kwargs)
-
-        if has_aux:
-            result, extra = result
-        else:
-            extra = None
-
-        s = state.full()
-        return (
-            (result, (extra, s)),
-            jnp.zeros_like(args[argnums])
-            if isinstance(argnums, int)
-            else [jnp.zeros_like(args[i]) for i in argnums],
-        )
+        _ = fun(*args, **kwargs)
 
     def _wrapped_value_and_grad_fun(*args, **kwargs):
         fun_ = _lazy_initialization(
@@ -222,6 +209,7 @@ def value_and_grad(
             ),
             initializer=_run_initializer,
             identifier=identifier,
+            use_init_return_value=False,
         )
 
         (result, (extra, new_state)), grad = fun_(
