@@ -81,10 +81,17 @@ def _lazy_initialization(
         pass
 
     def _initializer(*args, **kwargs):
+        ss = state.full(static=True)
         initializer_result = initializer(*args, **kwargs)
+
         state.set("isinit", True, static=True, namespace=[_get_identifier()])
         if use_init_return_value:
             return initializer_result
+
+        # When not using initializer return value, we reset the static state to
+        # its initial state. Otherwise, counters etc. could get updated twice.
+        state.update(ss, add_missing=False, static=True)
+
         return _wrapped_fun(*args, **kwargs)
 
     return _initializer
