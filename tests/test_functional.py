@@ -31,7 +31,7 @@ def _compute_loss(z):
     log_info(format_string("x.sum() = {}", x.sum()))
     log_scalar("x_sum", x.sum(), log_frequency=5)
     log_image("x_image", x, log_frequency=5)
-    x = (z * x ** 2).sum()
+    x = (z * x**2).sum()
     return x
 
 
