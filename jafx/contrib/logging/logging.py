@@ -43,7 +43,7 @@ class Logger(Handler, Generic[MessageType], metaclass=ABCMeta):
                 if message.level.value >= self.log_level.value:
                     self._handle_log_message(message)
             try:
-                return send(message, interpret_final=False)
+                return ReturnValue(send(message, interpret_final=False))
             except NoHandlerError:
                 return ReturnValue(None)
 
