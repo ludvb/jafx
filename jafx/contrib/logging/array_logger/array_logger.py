@@ -1,3 +1,4 @@
+import itertools as it
 from functools import partial
 from typing import Any, Callable, NamedTuple, Optional, Union
 
@@ -110,11 +111,19 @@ class TensorboardLogger(Logger[LogArray]):
     def _handle_log_message(self, log_message: LogMessage[LogArray]):
         ns = get_namespace()
 
-        def _do_log(data, _):
+        def _do_log(data, transforms):
             data, global_step = data
 
             if global_step % log_message.message.log_frequency != 0:
                 return
+
+            # Move batch dimensions first
+            batch_dims = [d["batch_dims"][0] for _, d in transforms]
+            dims = [False] * (data.ndim - len(batch_dims))
+            for d in batch_dims:
+                dims.insert(d, True)
+            batch_dims = np.arange(data.ndim)[dims]
+            data = np.moveaxis(data, batch_dims, np.arange(len(batch_dims)))
 
             options = log_message.message.options
             data = log_message.message.transformation(data)
