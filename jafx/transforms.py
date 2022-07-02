@@ -11,8 +11,6 @@ from typing import Any, Hashable, Optional
 
 import attr
 import jax
-import jax.numpy as jnp
-import numpy as np
 
 from . import state
 from .intercept import Intercept
@@ -37,6 +35,34 @@ def _hash_state(state):
     )
 
 
+def _get_identifier(fun, identifier=None):
+    if identifier is None:
+        identifier = str(hash(fun))
+
+    ss = state.full(static=True)
+    try:
+        _ = ss.pop("isinit")
+    except KeyError:
+        pass
+
+    return identifier + "-" + str(_hash_state(ss))
+
+
+def _is_initialized(fun, identifier=None):
+    try:
+        return state.get(
+            "isinit", static=True, namespace=[_get_identifier(fun, identifier)]
+        )
+    except state.StateException:
+        return False
+
+
+def _set_initialized(fun, value, identifier=None):
+    state.set(
+        "isinit", value, static=True, namespace=[_get_identifier(fun, identifier)]
+    )
+
+
 def _lazy_initialization(
     fun,
     initializer=None,
@@ -45,20 +71,6 @@ def _lazy_initialization(
 ):
     if initializer is None:
         initializer = fun
-
-    def _get_identifier():
-        if identifier is None:
-            identifier_ = str(hash(fun))
-        else:
-            identifier_ = identifier
-
-        ss = state.full(static=True)
-        try:
-            _ = ss.pop("isinit")
-        except KeyError:
-            pass
-
-        return identifier_ + "-" + str(_hash_state(ss))
 
     try:
         noinit = state.get("noinit", static=True, namespace=["value"])
@@ -72,19 +84,15 @@ def _lazy_initialization(
         with state.temp("noinit", True, static=True, namespace=["value"]):
             return fun(*args, **kwargs)
 
-    try:
-        isinit = state.get("isinit", static=True, namespace=[_get_identifier()])
-        if isinit:
-            return _wrapped_fun
-
-    except state.StateException:
-        pass
+    if _is_initialized(fun, identifier=identifier):
+        return _wrapped_fun
 
     def _initializer(*args, **kwargs):
         ss = state.full(static=True)
         initializer_result = initializer(*args, **kwargs)
 
-        state.set("isinit", True, static=True, namespace=[_get_identifier()])
+        _set_initialized(fun, True, identifier=identifier)
+
         if use_init_return_value:
             return initializer_result
 
@@ -184,6 +192,7 @@ def value_and_grad(
     holomorphic=False,
     allow_int=False,
     reduce_axes=(),
+    *,
     identifier=None,
 ):
     if identifier is None:
@@ -201,9 +210,6 @@ def value_and_grad(
 
         return result, (extra, ds.state)
 
-    def _run_initializer(*args, _cur_state, **kwargs):
-        _ = fun(*args, **kwargs)
-
     def _wrapped_value_and_grad_fun(*args, **kwargs):
         fun_ = _lazy_initialization(
             jax.value_and_grad(
@@ -214,7 +220,6 @@ def value_and_grad(
                 allow_int=allow_int,
                 reduce_axes=reduce_axes,
             ),
-            initializer=_run_initializer,
             identifier=identifier,
             use_init_return_value=False,
         )
@@ -250,88 +255,6 @@ def grad(fun, *grad_args, **grad_kwargs):
     return _wrapped_grad_fun
 
 
-def value_and_param_grad(fun, *grad_args, identifier=None, **grad_kwargs):
-    if identifier is None:
-        identifier = str(hash(fun))
-
-    try:
-        has_aux = grad_kwargs.pop("has_aux")
-    except KeyError:
-        has_aux = False
-
-    def _wrapped_fun(state_param, state_nonparam, *args, **kwargs):
-        with _DYNAMIC_STATE_BLOCKER:
-            with state.DynamicState(state_nonparam) as ds_nonparam:
-                with state.DynamicState({"param_state": state_param}) as ds_param:
-                    result = fun(*args, **kwargs)
-
-        if has_aux:
-            result, extra = result
-        else:
-            extra = None
-
-        return result, (extra, {**ds_nonparam.state, **ds_param.state})
-
-    def _run_transform(*args, **kwargs):
-        cur_state = state.full().copy()
-        state_param = cur_state.pop("param_state")
-        return jax.value_and_grad(
-            _wrapped_fun,
-            *grad_args,
-            **grad_kwargs,
-            has_aux=True,
-        )(state_param, cur_state, *args, **kwargs)
-
-    def _run_initializer(*args, **kwargs):
-        result = fun(*args, **kwargs)
-
-        if has_aux:
-            result, extra = result
-        else:
-            extra = None
-
-        s = state.full()
-        return (
-            (result, (extra, s)),
-            jax.tree_util.tree_map(jnp.zeros_like, s["param_state"]),
-        )
-
-    def _wrapped_value_and_grad_fun(*args, **kwargs):
-        fun_ = _lazy_initialization(
-            _run_transform,
-            initializer=_run_initializer,
-            identifier=identifier,
-        )
-
-        (result, (extra, new_state)), grad = fun_(*args, **kwargs)
-
-        state.update(new_state, add_missing=True)
-
-        if has_aux:
-            result = (result, extra)
-
-        return result, grad
-
-    return _wrapped_value_and_grad_fun
-
-
-def param_grad(fun, *grad_args, **grad_kwargs):
-    has_aux = "has_aux" in grad_kwargs and grad_kwargs["has_aux"]
-    _value_and_grad = value_and_param_grad(fun, *grad_args, **grad_kwargs)
-
-    def _wrapped_param_grad_fun(*args, **kwargs):
-        result = _value_and_grad(*args, **kwargs)
-
-        if has_aux:
-            (_, extra), grad = result
-            return grad, extra
-
-        _, grad = result
-        return grad
-
-    return _wrapped_param_grad_fun
-
-
 def vjp(fn, *primals, **vjp_kwargs):
     try:
         has_aux = vjp_kwargs.pop("has_aux")
@@ -352,44 +275,6 @@ def vjp(fn, *primals, **vjp_kwargs):
 
     result, f_vjp, (extra, new_state) = jax.vjp(
         partial(_wrapped_fun, state.full()),
-        *primals,
-        **vjp_kwargs,
-        has_aux=True,
-    )
-
-    state.update(new_state, add_missing=True)
-
-    if has_aux:
-        result = (result, extra)
-
-    return result, f_vjp
-
-
-def param_vjp(fn, *primals, **vjp_kwargs):
-    try:
-        has_aux = vjp_kwargs.pop("has_aux")
-    except KeyError:
-        has_aux = False
-
-    def _wrapped_fun(cur_state, cur_param_state, *args):
-        with _DYNAMIC_STATE_BLOCKER:
-            with state.DynamicState(cur_state) as ds:
-                with state.DynamicState({"param_state": cur_param_state}) as ds_param:
-                    result = fn(*args)
-
-        if has_aux:
-            result, extra = result
-        else:
-            extra = None
-
-        return result, (extra, {**ds.state, **ds_param.state})
-
-    cur_state = state.full().copy()
-    state_param = cur_state.pop("param_state")
-
-    result, f_vjp, (extra, new_state) = jax.vjp(
-        partial(_wrapped_fun, cur_state),
-        state_param,
         *primals,
         **vjp_kwargs,
         has_aux=True,

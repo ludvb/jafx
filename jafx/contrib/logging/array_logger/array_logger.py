@@ -8,8 +8,7 @@ import jax.numpy as jnp
 import numpy as np
 from jax.experimental.host_callback import barrier_wait, id_tap
 
-from .... import get_namespace
-from ....global_step import get_global_step
+from .... import get_namespace, get_global_step
 from ..logging import Logger, LogLevel, LogMessage, log
 from .jaxboard import SummaryWriter
 

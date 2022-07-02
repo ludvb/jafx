@@ -21,7 +21,7 @@ from jafx.contrib.logging import (
 from jafx.contrib.logging.text_logger import format_string, make_string_formatter
 from jafx.hparams import hparams
 from jafx.io import load_dynamic_state, save_dynamic_state
-from jafx.params import update_params
+from jafx.params import update_params, value_and_param_grad
 
 
 def _compute_loss(z):
@@ -37,7 +37,7 @@ def _compute_loss(z):
 
 @partial(transforms.pmap, axis_name="num_devices")
 def _update_state(z):
-    loss, grad = transforms.value_and_param_grad(_compute_loss)(z)
+    loss, grad = value_and_param_grad(_compute_loss)(z)
     grad = jax.lax.pmean(grad, axis_name="num_devices")
     loss = jax.lax.pmean(loss, axis_name="num_devices")
     update_params(grad)
