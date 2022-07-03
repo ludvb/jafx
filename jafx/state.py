@@ -127,7 +127,7 @@ class _State(Handler):
                 return ReturnValue(self._get_state(message.group, message.namespace))
             except KeyError:
                 try:
-                    return send(message, interpret_final=False)
+                    return ReturnValue(send(message, interpret_final=False))
                 except NoHandlerError:
                     raise StateException(
                         'No state for group "{}" in namespace /{}'.format(
@@ -138,7 +138,7 @@ class _State(Handler):
         if isinstance(message, RmStateMessage):
             self._rm_state(message.group, message.namespace)
             try:
-                return send(message, interpret_final=False)
+                return ReturnValue(send(message, interpret_final=False))
             except NoHandlerError:
                 pass
             return ReturnValue(None)
