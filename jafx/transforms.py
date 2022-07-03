@@ -30,7 +30,7 @@ def _hash_state(state):
 
     return jax.tree_util.tree_reduce(
         op.xor,
-        jax.tree_util.tree_map(_safe_hash, state),
+        jax.tree_map(_safe_hash, state),
         0,
     )
 
@@ -295,7 +295,7 @@ def _make_pmap_initializer(fun, axis_name, in_axes, out_axes, identifier):
                 with state.DynamicState(state_dynamic) as ds:
                     result = fun(*args, **kwargs)
 
-            mapped_state_axes = jax.tree_util.tree_map(
+            mapped_state_axes = jax.tree_map(
                 lambda x: 0 if hasattr(x, "batch_dim") else None, ds.state
             )
             state.set(
@@ -306,7 +306,7 @@ def _make_pmap_initializer(fun, axis_name, in_axes, out_axes, identifier):
             )
             # TODO: ^ reduce mapped_state_axes to minimal prefix tree
 
-            # new_state = jax.tree_util.tree_multimap(
+            # new_state = jax.tree_map(
             #     lambda x, axis: jax.lax.all_gather(x, axis_name=axis_name, axis=axis)
             #     if axis is not None
             #     else x,
@@ -314,7 +314,7 @@ def _make_pmap_initializer(fun, axis_name, in_axes, out_axes, identifier):
             #     mapped_state_axes,
             # )
             # TODO: ^ look into why this doesn't work
-            new_state = jax.tree_util.tree_map(
+            new_state = jax.tree_map(
                 lambda x: jax.lax.all_gather(x, axis_name=axis_name, axis=0)
                 if hasattr(x, "batch_dim")
                 else x,
@@ -398,14 +398,14 @@ def _parse_axes(axes):
             return _LeafNode([(k, i) for i, k in enumerate(in_axis[:-1])])
         raise RuntimeError()
 
-    return jax.tree_util.tree_map(_parse_axes, axes, is_leaf=_is_leaf)
+    return jax.tree_map(_parse_axes, axes, is_leaf=_is_leaf)
 
 
 def _get_axis_size(pytree, axes):
     def _size_of_subtree(axes: _LeafNode, tree):
         def _size_of_axis_in_subtree(i):
-            nodes = jax.tree_util.tree_leaves(tree)
-            return jax.tree_util.tree_map(lambda node: node.shape[i], nodes)
+            nodes = jax.tree_leaves(tree)
+            return jax.tree_map(lambda node: node.shape[i], nodes)
 
         return [
             _LeafNode((name, s))
@@ -414,8 +414,8 @@ def _get_axis_size(pytree, axes):
         ]
 
     axes = _parse_axes(axes)
-    subtree_sizes = jax.tree_util.tree_map(_size_of_subtree, axes, pytree)
-    subtree_sizes = [x.value for x in jax.tree_util.tree_leaves(subtree_sizes)]
+    subtree_sizes = jax.tree_map(_size_of_subtree, axes, pytree)
+    subtree_sizes = [x.value for x in jax.tree_leaves(subtree_sizes)]
 
     def _collapse_sizes(k, sizes):
         size, *rest = sizes

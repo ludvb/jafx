@@ -147,7 +147,7 @@ class _State(Handler):
                 result = send(message, interpret_final=False)
             except NoHandlerError:
                 result = {}
-            state = jax.tree_util.tree_map(lambda x: x, self._state)
+            state = jax.tree_map(lambda x: x, self._state)
             # ^ NOTE: This identity map is used to recursively copy the
             #         self._state PyTree, thereby disallowing state
             #         modifications by mutating the return value.

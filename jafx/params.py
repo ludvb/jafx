@@ -19,7 +19,7 @@ from .handler import Handler, Message, NoHandlerError, ReturnValue, send
 from .hparams import get_hparam
 from .intercept import Intercept
 from .io import LoadStateMessage, SaveStateMessage, StateIOMessage
-from .transforms import _get_identifier, _is_initialized, _set_initialized
+from .transforms import _is_initialized, _set_initialized
 
 
 class NoParamException(Exception):
@@ -64,9 +64,7 @@ def _get_param(name: str, default_value: Any, lr_multiplier=1.0) -> jnp.ndarray:
             try:
                 opt_state = state.get("opt_state")
                 _ = state.get("param_step")
-                param = jax.tree_util.tree_map(
-                    jnp.array, optimizer.params_fn(opt_state)
-                )
+                param = jax.tree_map(jnp.array, optimizer.params_fn(opt_state))
                 state.set("param_state", param)
 
             except state.StateException:
@@ -87,7 +85,7 @@ def _update_params(grads) -> None:
     opt = state.full(static=True)["opt"]
     param_step = state.full()["param_step"]
 
-    opt_state_new = jax.tree_util.tree_map(
+    opt_state_new = jax.tree_map(
         lambda opt, opt_state, param_step, g: opt.update_fn(param_step, g, opt_state),
         opt,
         opt_state,
@@ -95,13 +93,13 @@ def _update_params(grads) -> None:
         grads,
         is_leaf=lambda x: isinstance(x, Optimizer),
     )
-    param_state_new = jax.tree_util.tree_map(
+    param_state_new = jax.tree_map(
         lambda opt, opt_state: opt.params_fn(opt_state),
         opt,
         opt_state_new,
         is_leaf=lambda x: isinstance(x, Optimizer),
     )
-    param_step_new = jax.tree_util.tree_map(lambda x: x + 1, param_step)
+    param_step_new = jax.tree_map(lambda x: x + 1, param_step)
 
     state.update(
         {
@@ -213,7 +211,7 @@ def _opt_state_io_packer_fn(message: Message):
             packed_opt_state = message.state["opt_state"]
         except KeyError:
             return send(message=message, interpret_final=False)
-        unpacked_opt_state = jax.tree_util.tree_map(
+        unpacked_opt_state = jax.tree_map(
             lambda x: UnpackedOptimizerState(data=unpack_optimizer_state(x)),
             packed_opt_state,
             is_leaf=lambda x: isinstance(x, OptimizerState),
@@ -231,7 +229,7 @@ def _opt_state_io_packer_fn(message: Message):
             unpacked_opt_state = state.full()["opt_state"]
         except KeyError:
             return
-        packed_opt_state = jax.tree_util.tree_map(
+        packed_opt_state = jax.tree_map(
             lambda x: pack_optimizer_state(x.data),
             unpacked_opt_state,
             is_leaf=lambda x: isinstance(x, UnpackedOptimizerState),
