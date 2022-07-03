@@ -1,10 +1,10 @@
 import warnings
-from contextlib import contextmanager
 from functools import reduce
 
 import jax
 
 from . import batch_axes, state
+from .util import contextmanager
 
 
 def pnextkey():

@@ -1,4 +1,6 @@
-from typing import Any
+import sys
+from functools import partial
+from typing import Any, Callable, Generator
 
 
 def tree_merge(tree_a: Any, tree_b: Any) -> Any:
@@ -26,6 +28,46 @@ def tree_update(tree_a: Any, tree_b: Any) -> Any:
         return result
     else:
         return tree_b
+
+
+class ContextManager:
+    """Creates a reusable context manager based on given generator function."""
+
+    def __init__(self, fun: Callable[..., Generator[Any, None, None]], *args, **kwargs):
+        self.fun = fun
+        self.args = args
+        self.kwargs = kwargs
+        self._generators = []
+
+    def __enter__(self):
+        g = self.fun(*self.args, **self.kwargs)
+        self._generators.append(g)
+        value = next(g)
+        return value
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        g = self._generators.pop()
+        if exc_type is None:
+            try:
+                next(g)
+            except StopIteration:
+                return False
+            raise RuntimeError("Generator didn't stop")
+        try:
+            g.throw(exc_type, exc_value, traceback)
+            raise RuntimeError("Generator didn't stop")
+        except StopIteration:
+            return True
+        except:
+            _, exc_value_, _ = sys.exc_info()
+            if exc_value is not exc_value_:
+                raise
+
+
+def contextmanager(
+    fun: Callable[..., Generator[Any, None, None]]
+) -> Callable[..., ContextManager]:
+    return partial(ContextManager, fun)
 
 
 class StackedContext:

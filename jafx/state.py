@@ -1,11 +1,10 @@
-from contextlib import contextmanager
 from typing import Any, Optional
 
 import attr
 import jax
 
 from .handler import Handler, Message, NoHandlerError, ReturnValue, send
-from .util import tree_merge, tree_update
+from .util import tree_merge, tree_update, contextmanager
 
 
 @attr.define

@@ -5,7 +5,6 @@
 
 import itertools as it
 import operator as op
-from contextlib import contextmanager
 from functools import partial, total_ordering, wraps
 from typing import Any, Hashable, Optional
 
@@ -14,6 +13,7 @@ import jax
 
 from . import state
 from .intercept import Intercept
+from .util import contextmanager
 
 _DYNAMIC_STATE_BLOCKER = Intercept(
     predicate=lambda x: isinstance(x, state.StateMessage) and not x.static,
