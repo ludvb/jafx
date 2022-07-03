@@ -2,6 +2,9 @@ import pickle
 from typing import Any
 
 import attr
+import jax
+import jax.numpy as jnp
+import numpy as np
 
 from . import state
 from .handler import Handler, Message, NoHandlerError, ReturnValue, send
@@ -39,6 +42,14 @@ class StateIO(Handler):
                 pass
             with open(message.filename, "rb") as f:
                 s = pickle.load(f)
+
+            # jnp.ndarrays are pickled as np.ndarrays, thus need to convert
+            # them back
+            # TODO: how should we deal with sharded arrays?
+            s = jax.tree_map(
+                lambda x: jnp.array(x) if isinstance(x, np.ndarray) else x, s
+            )
+
             state.update(s, add_missing=True)
             return ReturnValue(None)
 
