@@ -1,4 +1,5 @@
 import attr
+import warnings
 from abc import ABCMeta, abstractmethod
 from typing import Any
 
@@ -48,7 +49,15 @@ def send(message: Message, interpret_final: bool = True) -> Any:
             _STACK_PTR[-1] -= 1
             handler = _STACK[stack_ptr]
             match handler._handle(message):
+                case None:
+                    pass
                 case ReturnValue(value):
+                    return value
+                case value:
+                    warnings.warn(
+                        "Handler return value was not wrapped in `ReturnValue`."
+                        " This is discouraged, since it can introduce bugs if the return value is `None`."
+                    )
                     return value
         else:
             raise NoHandlerError("Unhandled message: " + type(message).__name__)
