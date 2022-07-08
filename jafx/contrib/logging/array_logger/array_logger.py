@@ -117,12 +117,16 @@ class TensorboardLogger(Logger[LogArray]):
                 return
 
             # Move batch dimensions first
-            batch_dims = [d["batch_dims"][0] for _, d in transforms]
-            dims = [False] * (data.ndim - len(batch_dims))
-            for d in batch_dims:
-                dims.insert(d, True)
-            batch_dims = np.arange(data.ndim)[dims]
-            data = np.moveaxis(data, batch_dims, np.arange(len(batch_dims)))
+            def _move_batch_dim(x):
+                batch_dims = [d["batch_dims"][0] for _, d in transforms]
+                dims = [False] * (x.ndim - len(batch_dims))
+                for d in batch_dims:
+                    dims.insert(d, True)
+                batch_dims = np.arange(x.ndim)[dims]
+                x = np.moveaxis(x, batch_dims, np.arange(len(batch_dims)))
+                return x
+
+            data = jax.tree_map(_move_batch_dim, data)
 
             options = log_message.message.options
             data = log_message.message.transformation(data)
