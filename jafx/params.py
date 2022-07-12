@@ -40,7 +40,6 @@ class ParamMessage(Message):
 class GetParam(ParamMessage):
     name: str
     default_value: Any = None
-    lr_multiplier: float = 1.0
 
 
 @attr.define
@@ -48,15 +47,13 @@ class UpdateParams(ParamMessage):
     grads: Any
 
 
-def _get_param(name: str, default_value: Any, lr_multiplier=1.0) -> jnp.ndarray:
+def _get_param(name: str, default_value: Any) -> jnp.ndarray:
     with state.scope(name):
         try:
             param = state.get("param_state")
         except state.StateException:
             optimizer_constructor = get_hparam("optimizer", adam, warn_if_unset=True)
             lr = get_hparam("learning_rate", 1e-3, warn_if_unset=True)
-
-            lr = lr * lr_multiplier
 
             optimizer = optimizer_constructor(lr)
             state.set("opt", optimizer, static=True)
@@ -114,10 +111,8 @@ def _update_params(grads) -> None:
 class ParamHandler(Handler):
     def _handle(self, message: Message) -> Any:
         match message:
-            case GetParam(
-                name=name, default_value=default_value, lr_multiplier=lr_multiplier
-            ):
-                param = _get_param(name, default_value, lr_multiplier)
+            case GetParam( name=name, default_value=default_value):
+                param = _get_param(name, default_value)
                 return ReturnValue(param)
 
             case UpdateParams(grads=grads):
@@ -128,15 +123,8 @@ class ParamHandler(Handler):
 def param(
     name: str,
     default_value: Any = None,
-    lr_multiplier: float = 1.0,
 ) -> Any:
-    return send(
-        message=GetParam(
-            name=name,
-            default_value=default_value,
-            lr_multiplier=lr_multiplier,
-        )
-    )
+    return send( message=GetParam( name=name, default_value=default_value))
 
 
 def update_params(grads: Any) -> None:
