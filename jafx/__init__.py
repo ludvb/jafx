@@ -37,4 +37,5 @@ from . import (
     state,
     transforms,
     util,
+    nn,
 )

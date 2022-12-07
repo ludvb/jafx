@@ -1,6 +1,7 @@
 """Utilities for gradient-based optimization
 """
 
+import itertools as it
 from typing import Any, NamedTuple, Optional
 
 import attr
@@ -48,6 +49,7 @@ class UpdateParams(ParamMessage):
 
 
 def _get_param(name: str, default_value: Any) -> jnp.ndarray:
+    print("get_param", name)
     with state.scope(name):
         try:
             param = state.get("param_state")
@@ -111,7 +113,7 @@ def _update_params(grads) -> None:
 class ParamHandler(Handler):
     def _handle(self, message: Message) -> Any:
         match message:
-            case GetParam( name=name, default_value=default_value):
+            case GetParam(name=name, default_value=default_value):
                 param = _get_param(name, default_value)
                 return ReturnValue(param)
 
@@ -124,7 +126,35 @@ def param(
     name: str,
     default_value: Any = None,
 ) -> Any:
-    return send( message=GetParam( name=name, default_value=default_value))
+    return send(message=GetParam(name=name, default_value=default_value))
+
+
+class NameCounter(Handler):
+    """Handler that adds a counter to the end of all parameter names, making it
+    easier to ensure that parameters are unique.
+    """
+
+    def __init__(self):
+        self._counters = {}
+
+    def _handle(self, message: Message) -> Any:
+        match message:
+            case GetParam(name=name):
+                with state.scope(name):
+                    k = "/".join(state.get_namespace())
+                try:
+                    counter = self._counters[k] + 1
+                except KeyError:
+                    counter = 1
+                self._counters[k] = counter
+                new_name = f"{name}.{counter}"
+                return send(
+                    attr.evolve(
+                        message,
+                        name=new_name,
+                    ),
+                    interpret_final=False,
+                )
 
 
 def update_params(grads: Any) -> None:
