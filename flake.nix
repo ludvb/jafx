@@ -47,6 +47,8 @@
             # ^ required by scipy
             export LD_LIBRARY_PATH+=:${pkgs.zlib}/lib
             # ^ required by scipy
+            export LD_LIBRARY_PATH+=:${pkgs.gcc-unwrapped.lib}/lib
+            # ^ required by scipy
           '' ;
         };
       });

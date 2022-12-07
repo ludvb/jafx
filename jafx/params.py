@@ -49,7 +49,6 @@ class UpdateParams(ParamMessage):
 
 
 def _get_param(name: str, default_value: Any) -> jnp.ndarray:
-    print("get_param", name)
     with state.scope(name):
         try:
             param = state.get("param_state")

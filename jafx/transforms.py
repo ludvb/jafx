@@ -404,7 +404,7 @@ def _parse_axes(axes):
 def _get_axis_size(pytree, axes):
     def _size_of_subtree(axes: _LeafNode, tree):
         def _size_of_axis_in_subtree(i):
-            nodes = jax.tree_leaves(tree)
+            nodes = jax.tree_util.tree_leaves(tree)
             return jax.tree_map(lambda node: node.shape[i], nodes)
 
         return [
@@ -415,7 +415,7 @@ def _get_axis_size(pytree, axes):
 
     axes = _parse_axes(axes)
     subtree_sizes = jax.tree_map(_size_of_subtree, axes, pytree)
-    subtree_sizes = [x.value for x in jax.tree_leaves(subtree_sizes)]
+    subtree_sizes = [x.value for x in jax.tree_util.tree_leaves(subtree_sizes)]
 
     def _collapse_sizes(k, sizes):
         size, *rest = sizes

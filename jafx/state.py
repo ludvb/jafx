@@ -4,7 +4,7 @@ import attr
 import jax
 
 from .handler import Handler, Message, NoHandlerError, ReturnValue, send
-from .util import tree_merge, tree_update, contextmanager
+from .util import contextmanager, tree_merge, tree_update
 
 
 @attr.define
@@ -271,12 +271,12 @@ def namespace(namespace: list[str]):
     )
 
 
-def scope(scope: str):
+def scope(name: str):
     try:
         ns = get("namespace", static=True, namespace=[])
     except StateException:
         ns = []
-    return namespace(ns + [scope])
+    return namespace(ns + [name])
 
 
 def get_namespace() -> list[str]:

@@ -1,5 +1,5 @@
 import sys
-from functools import partial
+from functools import partial, wraps
 from typing import Any, Callable, Generator
 
 
@@ -68,6 +68,24 @@ def contextmanager(
     fun: Callable[..., Generator[Any, None, None]]
 ) -> Callable[..., ContextManager]:
     return partial(ContextManager, fun)
+
+
+def as_decorator(context_manager):
+    """Converts a context manager into a decorator."""
+
+    def decorator(fun):
+        @wraps(fun)
+        def wrapper(*args, **kwargs):
+            if callable(context_manager):
+                ctx = context_manager()
+            else:
+                ctx = context_manager
+            with ctx:
+                return fun(*args, **kwargs)
+
+        return wrapper
+
+    return decorator
 
 
 class StackedContext:
